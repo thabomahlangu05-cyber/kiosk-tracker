@@ -1,0 +1,216 @@
+// Kiosk Production Tracker — data model
+// NOTE: dev uses SQLite, which does NOT support Prisma `enum` or scalar lists.
+// Enum-like fields are `String` and validated in app code (see src/lib/enums.ts).
+// To move to Postgres: change provider to "postgresql", set DATABASE_URL, then
+// `prisma migrate dev`. The models below are Postgres-compatible as written.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: connection URL lives in prisma.config.ts (for Migrate) and is passed
+// to PrismaClient via a driver adapter (see src/lib/db.ts).
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String // PRODUCTION_MANAGER | TEAM_LEADER | INVENTORY_MANAGER | INVENTORY_OFFICER | REPAIR_TECHNICIAN | QA_TECHNICIAN
+  active       Boolean  @default(true)
+  teamId       String?
+  createdAt    DateTime @default(now())
+
+  team                    Team?             @relation("TeamMembers", fields: [teamId], references: [id])
+  ledTeam                 Team?             @relation("TeamLeader")
+  assignedJobs            Job[]             @relation("JobTech")
+  stageTransitions        StageTransition[]
+  qaInspections           QAInspection[]
+  stockMovements          StockMovement[]
+  shiftLogs               ShiftLog[]
+  auditLogs               AuditLog[]
+  housekeepingAssigned    HousekeepingTask[] @relation("HousekeepingAssigned")
+  housekeepingCreated     HousekeepingTask[] @relation("HousekeepingCreated")
+}
+
+model Team {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  leaderId String? @unique
+
+  leader  User?  @relation("TeamLeader", fields: [leaderId], references: [id])
+  members User[] @relation("TeamMembers")
+  jobs    Job[]  @relation("JobTeam")
+}
+
+model KioskModel {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  kiosks Kiosk[]
+}
+
+model Kiosk {
+  id           String   @id @default(cuid())
+  serialNumber String   @unique
+  modelId      String
+  kind         String // BUILD | REPAIR
+  createdAt    DateTime @default(now())
+
+  model KioskModel @relation(fields: [modelId], references: [id])
+  jobs  Job[]
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  kioskId        String
+  kind           String // BUILD | REPAIR (denormalized from kiosk)
+  priority       String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  status         String    @default("IN_PROGRESS") // IN_PROGRESS | ON_HOLD | COMPLETED | CANCELLED
+  currentStage   String
+  assignedTeamId String?
+  assignedTechId String?
+  faultReport    String? // repair intake
+  buildOrderRef  String? // build intake
+  notes          String?
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  kiosk          Kiosk             @relation(fields: [kioskId], references: [id])
+  assignedTeam   Team?             @relation("JobTeam", fields: [assignedTeamId], references: [id])
+  assignedTech   User?             @relation("JobTech", fields: [assignedTechId], references: [id])
+  transitions    StageTransition[]
+  inspections    QAInspection[]
+  stockMovements StockMovement[]
+}
+
+// Configurable ordered stages per kind (BUILD vs REPAIR)
+model StageDefinition {
+  id         String  @id @default(cuid())
+  kind       String // BUILD | REPAIR
+  name       String
+  sequence   Int
+  isQa       Boolean @default(false)
+  isTerminal Boolean @default(false)
+
+  @@unique([kind, name])
+  @@unique([kind, sequence])
+}
+
+model StageTransition {
+  id        String    @id @default(cuid())
+  jobId     String
+  stage     String
+  enteredAt DateTime  @default(now())
+  exitedAt  DateTime?
+  userId    String?
+
+  job  Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model QAInspection {
+  id          String   @id @default(cuid())
+  jobId       String
+  inspectorId String
+  result      String // PASS | FAIL
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  inspector User     @relation(fields: [inspectorId], references: [id])
+  defects   Defect[]
+}
+
+model DefectType {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  defects Defect[]
+}
+
+model Defect {
+  id           String  @id @default(cuid())
+  inspectionId String
+  defectTypeId String
+  notes        String?
+
+  inspection QAInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  defectType DefectType   @relation(fields: [defectTypeId], references: [id])
+}
+
+model Part {
+  id             String  @id @default(cuid())
+  sku            String  @unique
+  name           String
+  category       String?
+  quantityOnHand Int     @default(0)
+  reorderLevel   Int     @default(0)
+  unitCost       Float   @default(0)
+  binLocation    String?
+
+  movements StockMovement[]
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  partId    String
+  type      String // RECEIPT | ISSUE | ADJUSTMENT | RETURN
+  quantity  Int // positive magnitude; sign interpreted by type
+  jobId     String?
+  userId    String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  part Part  @relation(fields: [partId], references: [id])
+  job  Job?  @relation(fields: [jobId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+}
+
+// Aggregate per-technician productivity rollups (also derivable from Job completions)
+model ShiftLog {
+  id             String   @id @default(cuid())
+  techId         String
+  date           DateTime
+  shift          String? // DAY | NIGHT
+  unitsCompleted Int      @default(0)
+  hours          Float    @default(0)
+
+  tech User @relation(fields: [techId], references: [id])
+
+  @@unique([techId, date, shift])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  detail    String? // JSON text
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+}
+
+// Housekeeping tasks (cleaning, maintenance, etc.)
+model HousekeepingTask {
+  id          String   @id @default(cuid())
+  title       String
+  category    String // CLEANING | TOOLS | SAFETY | GENERAL
+  priority    String   @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  status      String   @default("PENDING") // PENDING | ASSIGNED | IN_PROGRESS | COMPLETED | CANCELLED
+  assignedToId String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  createdById String
+
+  assignedTo User? @relation("HousekeepingAssigned", fields: [assignedToId], references: [id])
+  createdBy  User  @relation("HousekeepingCreated", fields: [createdById], references: [id])
+}

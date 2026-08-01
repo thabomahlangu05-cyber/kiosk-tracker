@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f1419; /* dark charcoal */
+  --foreground: #e8eef7; /* light gray */
+  --primary: #06b6d4; /* cyan/teal */
+  --primary-dark: #0891b2; /* darker cyan */
+  --surface: #1a202c; /* card backgrounds */
+  --border: #2d3748; /* subtle borders */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}

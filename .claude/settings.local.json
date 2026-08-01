@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)",
+      "PowerShell(winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements --silent)",
+      "Bash(curl -s -b kpt_session=eyJhbGciOiJIUzI1NiJ9.eyJuYW1lIjoiVGhhYm8gTWFobGFuZ3UiLCJlbWFpbCI6InRoYWJvLm1haGxhbmd1QHR5bWVkaWdpdGFsLmNvbSIsInJvbGUiOiJQUk9EVUNUSU9OX01BTkFHRVIiLCJ0ZWFtSWQiOm51bGwsInN1YiI6ImNtcjlhdXM3MjAwMHJra21maXJoemE5ZzIiLCJpYXQiOjE3ODU2MDQxNDQsImV4cCI6MTc4NTY0NzM0NH0.5kdiMFbKtqt5TwWnys4f6hbUc51R10rMO601zxUavbg http://localhost:3000/api/reports/export?range=7)",
+      "Bash(npm run *)",
+      "Bash(npx prisma *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(git commit -m 'Kiosk Production Tracker - Phases 0-5 Complete and Production Ready *)"
+    ]
+  }
+}
