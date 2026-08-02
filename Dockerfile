@@ -45,5 +45,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Start app
-CMD ["node_modules/.bin/next", "start"]
+# Start app - run migrations first, then start
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || true && node_modules/.bin/next start"]
