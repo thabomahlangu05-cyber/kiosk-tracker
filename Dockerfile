@@ -13,6 +13,9 @@ COPY prisma ./prisma
 # Copy source
 COPY . .
 
+# Generate Prisma client with dummy PostgreSQL URL (for build-time generation)
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost/dummy" npx prisma generate || true
+
 # Build Next.js app
 RUN npm run build
 
