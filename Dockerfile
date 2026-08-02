@@ -7,10 +7,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Generate Prisma client
-COPY prisma ./prisma
-RUN npx prisma generate
-
 # Copy source
 COPY . .
 
@@ -26,13 +22,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
-# Generate Prisma client
-COPY prisma ./prisma
-RUN npx prisma generate
-
 # Copy built app from builder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+
+# Copy prisma schema for runtime
+COPY prisma ./prisma
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
@@ -44,5 +39,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Start app (migrations can be run manually if needed)
-CMD ["node_modules/.bin/next", "start"]
+# Start app - generate Prisma client then start
+CMD ["sh", "-c", "npx prisma generate && node_modules/.bin/next start"]
