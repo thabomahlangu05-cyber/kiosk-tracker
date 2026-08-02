@@ -7,6 +7,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Copy prisma for build-time schema access
+COPY prisma ./prisma
+
 # Copy source
 COPY . .
 
@@ -39,5 +42,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Start app - generate Prisma client then start
-CMD ["sh", "-c", "npx prisma generate && node_modules/.bin/next start"]
+# Start app
+CMD ["node_modules/.bin/next", "start"]
