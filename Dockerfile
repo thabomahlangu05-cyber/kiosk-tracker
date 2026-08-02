@@ -44,5 +44,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Prisma migration and start
-CMD ["sh", "-c", "if [ -z \"$DATABASE_URL\" ]; then echo 'DATABASE_URL not set, skipping migrations'; else npx prisma migrate deploy; fi && node_modules/.bin/next start"]
+# Start app (migrations can be run manually if needed)
+CMD ["node_modules/.bin/next", "start"]
