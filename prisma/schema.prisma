@@ -11,7 +11,7 @@ generator client {
 // Prisma 7: connection URL lives in prisma.config.ts (for Migrate) and is passed
 // to PrismaClient via a driver adapter (see src/lib/db.ts).
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
