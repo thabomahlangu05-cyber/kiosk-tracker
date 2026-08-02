@@ -21,6 +21,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Install PostgreSQL client library for Prisma
+RUN apk add --no-cache postgresql-client
+
 # Install only production dependencies
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
