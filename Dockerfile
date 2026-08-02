@@ -35,6 +35,9 @@ COPY --from=builder /app/public ./public
 # Copy prisma schema for runtime
 COPY prisma ./prisma
 
+# Clean Prisma cache to force fresh schema parsing
+RUN rm -rf .prisma node_modules/.prisma
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 
