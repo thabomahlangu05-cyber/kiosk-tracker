@@ -7,6 +7,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Generate Prisma client
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy source
 COPY . .
 
@@ -22,10 +26,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
+# Generate Prisma client
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy built app from builder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY prisma ./prisma
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
