@@ -41,7 +41,7 @@ export default async function DashboardPage() {
       firstPassYield(),
     ]);
 
-  const lowStock = parts.filter((p) => p.quantityOnHand <= p.reorderLevel);
+  const lowStock = parts.filter((p: any) => p.quantityOnHand <= p.reorderLevel);
 
   return (
     <div className="space-y-6">
