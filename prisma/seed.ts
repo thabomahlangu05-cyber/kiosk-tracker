@@ -26,27 +26,23 @@ async function main() {
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
   // --- Workflow stage definitions -----------------------------------------
+  // Replaced wholesale rather than upserted: these rows are derived from the
+  // arrays in src/lib/enums.ts, and @@unique([kind, sequence]) means any
+  // reordering (inserting a stage mid-pipeline) collides on an in-place update.
+  await prisma.stageDefinition.deleteMany({});
   for (const [kind, stages] of [
     [KINDS.BUILD, BUILD_STAGES],
     [KINDS.REPAIR, REPAIR_STAGES],
   ] as const) {
-    for (const s of stages) {
-      await prisma.stageDefinition.upsert({
-        where: { kind_name: { kind, name: s.name } },
-        update: {
-          sequence: s.sequence,
-          isQa: !!s.isQa,
-          isTerminal: !!s.isTerminal,
-        },
-        create: {
-          kind,
-          name: s.name,
-          sequence: s.sequence,
-          isQa: !!s.isQa,
-          isTerminal: !!s.isTerminal,
-        },
-      });
-    }
+    await prisma.stageDefinition.createMany({
+      data: stages.map((s) => ({
+        kind,
+        name: s.name,
+        sequence: s.sequence,
+        isQa: !!s.isQa,
+        isTerminal: !!s.isTerminal,
+      })),
+    });
   }
 
   // --- Defect catalog ------------------------------------------------------

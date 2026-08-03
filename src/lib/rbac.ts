@@ -41,7 +41,14 @@ const MATRIX: Record<Action, Role[]> = {
   ],
   "intake:create": [PRODUCTION_MANAGER, TEAM_LEADER, INVENTORY_OFFICER],
   "job:assign": [PRODUCTION_MANAGER, TEAM_LEADER],
-  "job:advanceStage": [PRODUCTION_MANAGER, TEAM_LEADER, REPAIR_TECHNICIAN],
+  // Both technician roles can claim and move work at any stage, so both need
+  // this (it also gates the "My Work" queue in NAV below).
+  "job:advanceStage": [
+    PRODUCTION_MANAGER,
+    TEAM_LEADER,
+    REPAIR_TECHNICIAN,
+    QA_TECHNICIAN,
+  ],
   "qa:inspect": [PRODUCTION_MANAGER, QA_TECHNICIAN],
   "inventory:view": [
     PRODUCTION_MANAGER,

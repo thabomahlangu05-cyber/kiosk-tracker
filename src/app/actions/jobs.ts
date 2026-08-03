@@ -20,7 +20,11 @@ function canModifyJob(
   if (user.role === ROLES.PRODUCTION_MANAGER) return true;
   if (user.role === ROLES.TEAM_LEADER)
     return !!user.teamId && job.assignedTeamId === user.teamId;
-  if (user.role === ROLES.REPAIR_TECHNICIAN)
+  // Technicians act on work they've claimed, whatever stage it's at.
+  if (
+    user.role === ROLES.REPAIR_TECHNICIAN ||
+    user.role === ROLES.QA_TECHNICIAN
+  )
     return job.assignedTechId === user.id;
   return false;
 }

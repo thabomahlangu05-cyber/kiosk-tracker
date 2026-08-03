@@ -1,22 +1,29 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { ROLES } from "@/lib/enums";
+import { canClaimWork, TERMINAL_STAGES } from "@/lib/claims";
 
-/**
- * Technician self-assigns to a repair job
- */
+function revalidateQueues(serialNumber?: string) {
+  revalidatePath("/queue");
+  revalidatePath("/units");
+  revalidatePath("/dashboard");
+  if (serialNumber) revalidatePath(`/units/${encodeURIComponent(serialNumber)}`);
+}
+
+/** Technician claims an unassigned job, at whatever stage it currently sits. */
 export async function selfAssignToJob(jobId: string) {
   const user = await requireUser();
 
-  if (user.role !== ROLES.REPAIR_TECHNICIAN) {
-    throw new Error("Only repair technicians can self-assign");
+  if (!canClaimWork(user.role)) {
+    throw new Error("Only technicians can self-assign");
   }
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) throw new Error("Job not found");
-  if (job.assignedTechId) {
+  if (job.status === "COMPLETED") throw new Error("Job is already complete");
+  if (job.assignedTechId && job.assignedTechId !== user.id) {
     throw new Error("Job already assigned to someone else");
   }
 
@@ -26,27 +33,31 @@ export async function selfAssignToJob(jobId: string) {
     include: { kiosk: true },
   });
 
-  // Log assignment
   await prisma.auditLog.create({
     data: {
       actorId: user.id,
       action: "SELF_ASSIGNED",
       entity: "Job",
       entityId: jobId,
-      detail: JSON.stringify({ kiosk: updated.kiosk.serialNumber }),
+      detail: JSON.stringify({
+        kiosk: updated.kiosk.serialNumber,
+        stage: updated.currentStage,
+      }),
     },
   });
 
+  revalidateQueues(updated.kiosk.serialNumber);
   return updated;
 }
 
-/**
- * Technician unassigns themselves from a job
- */
+/** Technician releases a job back to the open queue. */
 export async function unassignFromJob(jobId: string) {
   const user = await requireUser();
 
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: { kiosk: true },
+  });
   if (!job) throw new Error("Job not found");
   if (job.assignedTechId !== user.id) {
     throw new Error("You are not assigned to this job");
@@ -63,27 +74,27 @@ export async function unassignFromJob(jobId: string) {
       action: "UNASSIGNED",
       entity: "Job",
       entityId: jobId,
+      detail: JSON.stringify({ stage: job.currentStage }),
     },
   });
 
+  revalidateQueues(job.kiosk.serialNumber);
   return updated;
 }
 
 /**
- * Get available repair jobs (not yet assigned)
+ * Unassigned, still-running jobs at any non-terminal stage. Returns an empty
+ * list for roles that don't claim work, so pages can call it unconditionally.
  */
 export async function getAvailableJobs() {
   const user = await requireUser();
+  if (!canClaimWork(user.role)) return [];
 
-  if (user.role !== ROLES.REPAIR_TECHNICIAN) {
-    throw new Error("Only repair technicians can view available jobs");
-  }
-
-  const jobs = await prisma.job.findMany({
+  return prisma.job.findMany({
     where: {
       assignedTechId: null,
       status: "IN_PROGRESS",
-      currentStage: { in: ["Repair", "Rework"] },
+      currentStage: { notIn: TERMINAL_STAGES },
     },
     include: {
       kiosk: { include: { model: true } },
@@ -91,31 +102,30 @@ export async function getAvailableJobs() {
     },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
-
-  return jobs;
 }
 
-/**
- * Get technician's assigned jobs
- */
+/** The signed-in technician's own in-progress jobs. */
 export async function getMyJobs() {
   const user = await requireUser();
+  if (!canClaimWork(user.role)) return [];
 
-  if (user.role !== ROLES.REPAIR_TECHNICIAN) {
-    throw new Error("Only repair technicians can view assigned jobs");
-  }
-
-  const jobs = await prisma.job.findMany({
-    where: {
-      assignedTechId: user.id,
-      status: "IN_PROGRESS",
-    },
+  return prisma.job.findMany({
+    where: { assignedTechId: user.id, status: "IN_PROGRESS" },
     include: {
       kiosk: { include: { model: true } },
       assignedTeam: true,
     },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
+}
 
-  return jobs;
+/** Form-action wrappers so a button can post a jobId directly. */
+export async function claimJob(formData: FormData): Promise<void> {
+  const jobId = String(formData.get("jobId") ?? "");
+  if (jobId) await selfAssignToJob(jobId);
+}
+
+export async function releaseJob(formData: FormData): Promise<void> {
+  const jobId = String(formData.get("jobId") ?? "");
+  if (jobId) await unassignFromJob(jobId);
 }

@@ -21,7 +21,8 @@
       "Bash(git commit -q -m 'Fix Postgres deployment: pg driver adapter, synced lockfile, drop SQLite migrations *)",
       "Bash(DATABASE_URL=\"postgresql://postgres.xvbghyzlhhoiaibvblns:Nkonko%4035ishot@aws-0-eu-west-1.pooler.supabase.com:5432/postgres\" npx tsx prisma/seed.ts)",
       "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
-      "Bash(git commit -q -m 'Limit Prisma pool to one connection for serverless *)"
+      "Bash(git commit -q -m 'Limit Prisma pool to one connection for serverless *)",
+      "Bash(git commit -q -m 'Rework stage pipeline and open self-assignment to all technicians *)"
     ]
   }
 }

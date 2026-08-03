@@ -73,20 +73,23 @@ export interface StageDef {
   isTerminal?: boolean;
 }
 
+// Both paths converge from Power On onwards: Power On → QA → Boxing → Dispatch.
 export const BUILD_STAGES: StageDef[] = [
   { name: "KITTING", label: "Kitting", sequence: 1 },
   { name: "ASSEMBLY", label: "Assembly", sequence: 2 },
-  { name: "TEST", label: "Test", sequence: 3 },
+  { name: "POWER_ON", label: "Power On", sequence: 3 },
   { name: "QA", label: "QA", sequence: 4, isQa: true },
-  { name: "DISPATCH", label: "Dispatch", sequence: 5, isTerminal: true },
+  { name: "BOXING", label: "Boxing / Packing", sequence: 5 },
+  { name: "DISPATCH", label: "Dispatch", sequence: 6, isTerminal: true },
 ];
 
 export const REPAIR_STAGES: StageDef[] = [
-  { name: "DIAGNOSIS", label: "Diagnosis", sequence: 1 },
+  { name: "RECEIVING", label: "Receiving", sequence: 1 },
   { name: "REPAIR", label: "Repair", sequence: 2 },
-  { name: "TEST", label: "Test", sequence: 3 },
+  { name: "POWER_ON", label: "Power On", sequence: 3 },
   { name: "QA", label: "QA", sequence: 4, isQa: true },
-  { name: "DISPATCH", label: "Dispatch", sequence: 5, isTerminal: true },
+  { name: "BOXING", label: "Boxing / Packing", sequence: 5 },
+  { name: "DISPATCH", label: "Dispatch", sequence: 6, isTerminal: true },
 ];
 
 export function stagesFor(kind: string): StageDef[] {

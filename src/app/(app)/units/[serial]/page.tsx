@@ -6,6 +6,7 @@ import { can } from "@/lib/rbac";
 import { JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
 import { isQaStage, nextStage } from "@/lib/workflow";
 import { advanceStage } from "@/app/actions/jobs";
+import { claimJob, releaseJob } from "@/app/actions/assignment";
 import { IssuePartForm } from "@/components/issue-part-form";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { KindBadge, StatusBadge, Badge } from "@/components/ui/badge";
@@ -62,13 +63,19 @@ export default async function UnitDetailPage({
     0,
   );
 
+  const isTechnician =
+    user.role === ROLES.REPAIR_TECHNICIAN || user.role === ROLES.QA_TECHNICIAN;
   const canModify =
     user.role === ROLES.PRODUCTION_MANAGER ||
     (user.role === ROLES.TEAM_LEADER &&
       !!user.teamId &&
       job.assignedTeamId === user.teamId) ||
-    (user.role === ROLES.REPAIR_TECHNICIAN &&
-      job.assignedTechId === user.id);
+    (isTechnician && job.assignedTechId === user.id);
+
+  // Technicians claim unclaimed work at any stage, and can hand it back.
+  const showClaim = isTechnician && !completed && !job.assignedTechId;
+  const showRelease =
+    isTechnician && !completed && job.assignedTechId === user.id;
   const showAdvance =
     can(user.role, "job:advanceStage") &&
     canModify &&
@@ -94,6 +101,23 @@ export default async function UnitDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {showClaim ? (
+            <form action={claimJob}>
+              <input type="hidden" name="jobId" value={job.id} />
+              <Button type="submit">Claim this unit</Button>
+            </form>
+          ) : null}
+          {showRelease ? (
+            <form action={releaseJob}>
+              <input type="hidden" name="jobId" value={job.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center rounded-md border border-[var(--border)] px-4 py-2 text-sm text-gray-300 hover:bg-[var(--border)]"
+              >
+                Release
+              </button>
+            </form>
+          ) : null}
           {showAdvance && next ? (
             <form action={advanceStage}>
               <input type="hidden" name="jobId" value={job.id} />
