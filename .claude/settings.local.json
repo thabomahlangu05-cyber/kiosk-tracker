@@ -12,7 +12,13 @@
       "Bash(git commit -m ' *)",
       "Bash(git config *)",
       "Bash(git commit *)",
-      "Bash(git commit -m 'Kiosk Production Tracker - Phases 0-5 Complete and Production Ready *)"
+      "Bash(git commit -m 'Kiosk Production Tracker - Phases 0-5 Complete and Production Ready *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(npm install *)",
+      "Bash(git rm *)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.xvbghyzlhhoiaibvblns:Nkonko%4035ishot@db.xvbghyzlhhoiaibvblns.supabase.co:5432/postgres\" npx prisma db push --accept-data-loss --skip-generate)",
+      "Bash(git commit -q -m 'Fix Postgres deployment: pg driver adapter, synced lockfile, drop SQLite migrations *)"
     ]
   }
 }

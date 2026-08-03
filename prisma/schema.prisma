@@ -12,7 +12,6 @@ generator client {
 // to PrismaClient via a driver adapter (see src/lib/db.ts).
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {

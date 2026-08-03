@@ -3,18 +3,13 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# Install all dependencies (including dev, needed for the Next build)
 COPY package*.json ./
 RUN npm ci
 
-# Copy prisma for build-time schema access
-COPY prisma ./prisma
-
-# Copy source
+# Copy source (schema included) and generate the Prisma client
 COPY . .
-
-# Generate Prisma client with dummy PostgreSQL URL (for build-time generation)
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost/dummy" npx prisma generate || true
+RUN npx prisma generate
 
 # Build Next.js app
 RUN npm run build
@@ -24,35 +19,29 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install PostgreSQL client library for Prisma
-RUN apk add --no-cache postgresql-client
-
-# Install only production dependencies
+# Production dependencies only. The prisma CLI and tsx are runtime deps so
+# `db push` and `db seed` work on container start without a network install.
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Force fresh Prisma client generation at runtime
-RUN rm -rf node_modules/.prisma
+# Schema first, then generate the client against it
+COPY prisma ./prisma
+RUN npx prisma generate
 
-# Copy built app from builder
+# Built app
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY next.config.ts ./
 
-# Copy prisma schema for runtime
-COPY prisma ./prisma
-
-# Clean Prisma cache to force fresh schema parsing
-RUN rm -rf .prisma node_modules/.prisma
-
-# Create non-root user
+# Create non-root user and hand over ownership
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
-
-# Set ownership
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
 EXPOSE 3000
 
-# Start app - generate client, run migrations, seed, then start
-CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && node_modules/.bin/next start"]
+# Sync the schema to Postgres, seed demo data, then serve.
+# `db push` is used instead of `migrate deploy` because the schema is the
+# source of truth here; seeding is best-effort so a re-run never blocks boot.
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && (npx prisma db seed || true) && node_modules/.bin/next start"]

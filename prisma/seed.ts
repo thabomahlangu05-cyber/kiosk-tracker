@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import {
   ROLES,
@@ -14,7 +15,9 @@ try {
   /* optional */
 }
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 // All seeded accounts share this password (development only).
 const DEFAULT_PASSWORD = "changeme123";

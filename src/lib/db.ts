@@ -1,16 +1,17 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
+// Prisma 7 connects through a driver adapter. Postgres everywhere (Railway /
+// Supabase in prod, a local Postgres in dev) so dev and prod stay identical.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrisma(): PrismaClient {
-  // Force DATABASE_URL to be used and skip schema introspection on every request
-  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith("file:")) {
-    process.env.PRISMA_SKIP_VALIDATION_WARNINGS = "true";
-  }
-
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+  });
   return new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    errorFormat: "pretty",
   });
 }
 
