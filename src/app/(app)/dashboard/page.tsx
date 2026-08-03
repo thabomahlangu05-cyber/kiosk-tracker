@@ -79,7 +79,7 @@ export default async function DashboardPage() {
               <p className="text-sm text-gray-500">No active units.</p>
             ) : (
               <ul className="space-y-2">
-                {wip.map((w) => (
+                {wip.map((w: any) => (
                   <li
                     key={`${w.kind}-${w.currentStage}`}
                     className="flex items-center justify-between text-sm"
