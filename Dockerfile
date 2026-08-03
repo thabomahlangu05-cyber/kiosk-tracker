@@ -54,5 +54,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Start app - run migrations first, then start
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || true && node_modules/.bin/next start"]
+# Start app - generate client, run migrations, seed, then start
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && node_modules/.bin/next start"]
