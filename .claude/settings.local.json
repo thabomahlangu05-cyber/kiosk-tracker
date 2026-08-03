@@ -18,7 +18,10 @@
       "Bash(npm install *)",
       "Bash(git rm *)",
       "Bash(DATABASE_URL=\"postgresql://postgres.xvbghyzlhhoiaibvblns:Nkonko%4035ishot@db.xvbghyzlhhoiaibvblns.supabase.co:5432/postgres\" npx prisma db push --accept-data-loss --skip-generate)",
-      "Bash(git commit -q -m 'Fix Postgres deployment: pg driver adapter, synced lockfile, drop SQLite migrations *)"
+      "Bash(git commit -q -m 'Fix Postgres deployment: pg driver adapter, synced lockfile, drop SQLite migrations *)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.xvbghyzlhhoiaibvblns:Nkonko%4035ishot@aws-0-eu-west-1.pooler.supabase.com:5432/postgres\" npx tsx prisma/seed.ts)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(git commit -q -m 'Limit Prisma pool to one connection for serverless *)"
     ]
   }
 }

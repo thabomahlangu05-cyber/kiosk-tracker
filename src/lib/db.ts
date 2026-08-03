@@ -6,8 +6,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrisma(): PrismaClient {
+  // Serverless: each function instance gets its own pool, so keep it to a
+  // single connection and drop it quickly. Point DATABASE_URL at Supabase's
+  // transaction-mode pooler (port 6543) so these don't exhaust the database.
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
   });
   return new PrismaClient({
     adapter,
@@ -17,4 +23,6 @@ function createPrisma(): PrismaClient {
 
 export const prisma = globalForPrisma.prisma ?? createPrisma();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Cached in every environment: avoids extra pools if the module is evaluated
+// more than once (dev HMR, or separate serverless bundles sharing a global).
+globalForPrisma.prisma = prisma;
