@@ -84,7 +84,7 @@ export async function cancelPartRequestAction(formData: FormData): Promise<void>
     include: { job: { include: { kiosk: true } } },
   });
   if (!req) throw new Error("Request not found");
-  if (req.status !== PART_REQUEST_STATUS.REQUESTED) {
+  if (req.status !== PART_REQUEST_STATUS.NEEDED) {
     throw new Error("Only pending requests can be cancelled");
   }
 
@@ -121,7 +121,7 @@ export async function fulfilPartRequestAction(formData: FormData): Promise<void>
     include: { job: { include: { kiosk: true } }, part: true },
   });
   if (!req) throw new Error("Request not found");
-  if (req.status !== PART_REQUEST_STATUS.REQUESTED) {
+  if (req.status !== PART_REQUEST_STATUS.NEEDED) {
     throw new Error("Request is not pending");
   }
   if (!req.part) {

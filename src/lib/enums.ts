@@ -37,6 +37,24 @@ export const HOUSEKEEPING_CATEGORIES = [
 ] as const;
 export type HousekeepingCategory = (typeof HOUSEKEEPING_CATEGORIES)[number];
 
+/** The 5S standards, in their conventional order. */
+export const FIVE_S = [
+  "SORT",
+  "SHINE",
+  "SIMPLIFY",
+  "STANDARDISE",
+  "SUSTAIN",
+] as const;
+export type FiveS = (typeof FIVE_S)[number];
+
+export const FIVE_S_LABELS: Record<FiveS, string> = {
+  SORT: "Sort and discard",
+  SHINE: "Shine",
+  SIMPLIFY: "Simplify",
+  STANDARDISE: "Standardise",
+  SUSTAIN: "Sustain",
+};
+
 /** How often a housekeeping task recurs. */
 export const HOUSEKEEPING_FREQUENCIES = [
   "ONCE",
@@ -49,6 +67,39 @@ export type HousekeepingFrequency = (typeof HOUSEKEEPING_FREQUENCIES)[number];
 /** Title-case a SCREAMING_CASE enum value for display ("DAILY" -> "Daily"). */
 export function titleCase(value: string): string {
   return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
+/** Lifecycle of a requested part, from asked-for to handed-over. */
+export const PART_STATUSES = [
+  "NEEDED",
+  "ORDERED",
+  "RECEIVED",
+  "ISSUED",
+] as const;
+export type PartStatus = (typeof PART_STATUSES)[number];
+
+/** Categories for a floor announcement. */
+export const ANNOUNCEMENT_CATEGORIES = [
+  "GENERAL",
+  "URGENT",
+  "CHANGE",
+  "REMINDER",
+] as const;
+
+/** Where an idea sits in review. */
+export const IDEA_STATUSES = [
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "IMPLEMENTED",
+  "REJECTED",
+] as const;
+export type IdeaStatus = (typeof IDEA_STATUSES)[number];
+
+/** "UNDER_REVIEW" -> "Under review". */
+export function humanise(value: string): string {
+  const s = value.replace(/_/g, " ").toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** Which checklist a RepairChecklistItem belongs to. */
@@ -100,7 +151,9 @@ export type QaResult = (typeof QA_RESULT)[keyof typeof QA_RESULT];
 // Lives here rather than in the server-actions file: a "use server" module may
 // only export async functions.
 export const PART_REQUEST_STATUS = {
-  REQUESTED: "REQUESTED",
+  NEEDED: "NEEDED",
+  ORDERED: "ORDERED",
+  RECEIVED: "RECEIVED",
   ISSUED: "ISSUED",
   CANCELLED: "CANCELLED",
 } as const;

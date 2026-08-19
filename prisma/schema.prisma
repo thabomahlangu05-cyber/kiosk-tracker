@@ -37,6 +37,9 @@ model User {
   repairTasksAssigned     RepairChecklistItem[] @relation("RepairTaskAssigned")
   partRequestsMade        PartRequest[]     @relation("PartRequestedBy")
   partRequestsFulfilled   PartRequest[]     @relation("PartRequestFulfilledBy")
+  announcements           Announcement[]    @relation("AnnouncementAuthor")
+  ideas                   Idea[]            @relation("IdeaAuthor")
+  ideaVotes               IdeaVote[]        @relation("IdeaVoter")
 }
 
 model Team {
@@ -103,7 +106,7 @@ model PartRequest {
   partId        String? // set when the request matches a catalogue part
   description   String // what the technician asked for, verbatim
   quantity      Int       @default(1)
-  status        String    @default("REQUESTED") // REQUESTED | ISSUED | CANCELLED
+  status        String    @default("NEEDED") // NEEDED | ORDERED | RECEIVED | ISSUED | CANCELLED
   requestedById String
   fulfilledById String?
   createdAt     DateTime  @default(now())
@@ -248,11 +251,50 @@ model AuditLog {
   actor User? @relation(fields: [actorId], references: [id])
 }
 
+// Floor-wide notice board: updates, changes and reminders.
+model Announcement {
+  id        String   @id @default(cuid())
+  body      String
+  category  String   @default("GENERAL") // GENERAL | URGENT | CHANGE | REMINDER
+  kioskRef  String? // optional kiosk serial the update relates to
+  authorId  String
+  createdAt DateTime @default(now())
+
+  author User @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+}
+
+// Continuous-improvement suggestions from the floor, with team voting.
+model Idea {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("SUBMITTED") // SUBMITTED | UNDER_REVIEW | APPROVED | IMPLEMENTED | REJECTED
+  authorId    String
+  createdAt   DateTime @default(now())
+
+  author User       @relation("IdeaAuthor", fields: [authorId], references: [id])
+  votes  IdeaVote[]
+}
+
+model IdeaVote {
+  id        String   @id @default(cuid())
+  ideaId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  user User @relation("IdeaVoter", fields: [userId], references: [id])
+
+  @@unique([ideaId, userId]) // one vote per person per idea
+}
+
 // Housekeeping tasks (cleaning, maintenance, etc.)
 model HousekeepingTask {
   id          String   @id @default(cuid())
   title       String
   category    String // CLEANING | TOOLS | STOCK | SAFETY | GENERAL
+  area        String? // where on the floor: "Dispatch bay", "Workbench 3"…
+  fiveS       String? // SORT | SHINE | SIMPLIFY | STANDARDISE | SUSTAIN
   frequency   String   @default("ONCE") // ONCE | DAILY | WEEKLY | MONTHLY
   priority    String   @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
   status      String   @default("PENDING") // PENDING | ASSIGNED | IN_PROGRESS | COMPLETED | CANCELLED

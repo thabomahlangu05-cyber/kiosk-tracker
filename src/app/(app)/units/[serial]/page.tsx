@@ -129,7 +129,7 @@ export default async function UnitDetailPage({
       user.role === ROLES.TEAM_LEADER ||
       user.role === ROLES.PRODUCTION_MANAGER);
   const openRequests = job.partRequests.filter(
-    (r) => r.status === "REQUESTED",
+    (r) => r.status === "NEEDED",
   );
   const canManageRequests =
     user.role === ROLES.TEAM_LEADER || user.role === ROLES.PRODUCTION_MANAGER;
@@ -283,7 +283,7 @@ export default async function UnitDetailPage({
                 </p>
               ) : (
                 job.partRequests.map((req) => {
-                  const pending = req.status === "REQUESTED";
+                  const pending = req.status === "NEEDED";
                   const mine = req.requestedById === user.id;
                   return (
                     <div

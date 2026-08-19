@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
+  FIVE_S,
   HOUSEKEEPING_CATEGORIES,
   HOUSEKEEPING_FREQUENCIES,
   PRIORITIES,
@@ -22,6 +23,11 @@ export async function createTaskAction(formData: FormData): Promise<void> {
   const category = String(formData.get("category") ?? "GENERAL");
   const frequency = String(formData.get("frequency") ?? "ONCE");
   const priority = String(formData.get("priority") ?? PRIORITIES.NORMAL);
+  const area = String(formData.get("area") ?? "").trim() || null;
+  const fiveSRaw = String(formData.get("fiveS") ?? "");
+  const fiveS = FIVE_S.includes(fiveSRaw as (typeof FIVE_S)[number])
+    ? fiveSRaw
+    : null;
   if (!title) return;
 
   const task = await prisma.housekeepingTask.create({
@@ -38,6 +44,8 @@ export async function createTaskAction(formData: FormData): Promise<void> {
         ? frequency
         : "ONCE",
       priority,
+      area,
+      fiveS,
       createdById: user.id,
     },
   });

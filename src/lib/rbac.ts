@@ -91,7 +91,11 @@ export const NAV: NavItem[] = [
   { href: "/qa", label: "QA", action: "qa:inspect" },
   { href: "/inventory", label: "Inventory", action: "inventory:view" },
   { href: "/reports", label: "Reports", action: "reports:view" },
-  { href: "/team-performance", label: "Team Performance", action: "reports:view" },
+  { href: "/team-performance", label: "Team Performance", action: "dashboard:view" },
+  // Open to the whole floor — dashboard:view covers every role.
   { href: "/housekeeping", label: "Housekeeping", action: "dashboard:view" },
+  { href: "/stock", label: "Stock", action: "dashboard:view" },
+  { href: "/communications", label: "Communications", action: "dashboard:view" },
+  { href: "/ideas", label: "Ideas", action: "dashboard:view" },
   { href: "/admin", label: "Admin", action: "admin:manage" },
 ];

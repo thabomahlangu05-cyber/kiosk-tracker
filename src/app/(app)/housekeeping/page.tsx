@@ -10,6 +10,8 @@ import {
   deleteTaskAction,
 } from "@/app/actions/housekeeping";
 import {
+  FIVE_S,
+  FIVE_S_LABELS,
   HOUSEKEEPING_CATEGORIES,
   HOUSEKEEPING_FREQUENCIES,
   PRIORITIES,
@@ -108,6 +110,41 @@ export default async function HousekeepingPage({
                 placeholder="What needs doing?"
                 className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               />
+            </div>
+            <div className="min-w-40">
+              <label
+                htmlFor="hk-area"
+                className="mb-1 block text-xs font-medium text-gray-400"
+              >
+                Area
+              </label>
+              <input
+                id="hk-area"
+                name="area"
+                placeholder="Dispatch bay…"
+                className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="hk-fives"
+                className="mb-1 block text-xs font-medium text-gray-400"
+              >
+                5S standard
+              </label>
+              <select
+                id="hk-fives"
+                name="fiveS"
+                defaultValue=""
+                className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              >
+                <option value="">None</option>
+                {FIVE_S.map((s) => (
+                  <option key={s} value={s}>
+                    {FIVE_S_LABELS[s]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label
@@ -229,6 +266,7 @@ export default async function HousekeepingPage({
                     <div className="min-w-40 flex-1">
                       <p className="font-medium text-white">{task.title}</p>
                       <p className="text-xs text-gray-500">
+                        {task.area ? `${task.area} · ` : ""}
                         {task.assignedTo
                           ? `Claimed by ${task.assignedTo.name}`
                           : "Unclaimed"}{" "}
@@ -239,6 +277,11 @@ export default async function HousekeepingPage({
                     <Badge tone={CATEGORY_TONES[task.category] ?? "slate"}>
                       {titleCase(task.category)}
                     </Badge>
+                    {task.fiveS ? (
+                      <Badge tone="amber">
+                        {FIVE_S_LABELS[task.fiveS as keyof typeof FIVE_S_LABELS]}
+                      </Badge>
+                    ) : null}
                     {task.frequency !== "ONCE" ? (
                       <Badge tone="slate">{titleCase(task.frequency)}</Badge>
                     ) : null}
