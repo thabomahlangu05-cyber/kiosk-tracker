@@ -20,16 +20,10 @@ async function loadItem(itemId: string) {
   return item;
 }
 
-/** Any repair technician may claim an unassigned checklist task — this is
- * what replaces whole-job locking for the Repair stage. */
+/** Anyone on the floor may claim an unassigned checklist task. Work is
+ * assigned task by task — nobody claims a whole kiosk. */
 export async function selfAssignToTask(itemId: string) {
   const user = await requireUser();
-  if (
-    user.role !== ROLES.REPAIR_TECHNICIAN &&
-    user.role !== ROLES.QA_TECHNICIAN
-  ) {
-    throw new Error("Only technicians can claim checklist tasks");
-  }
 
   const item = await loadItem(itemId);
   if (item.assignedToId && item.assignedToId !== user.id) {
@@ -81,14 +75,21 @@ export async function toggleTaskComplete(itemId: string) {
 
   const isManager =
     user.role === ROLES.PRODUCTION_MANAGER || user.role === ROLES.TEAM_LEADER;
-  if (item.assignedToId !== user.id && !isManager) {
-    throw new Error("Assign yourself to this task before completing it");
+  // Whoever holds the task ticks it off. An unclaimed task can be ticked by
+  // anyone — doing the work is what matters, not claiming it first.
+  if (item.assignedToId && item.assignedToId !== user.id && !isManager) {
+    throw new Error("Someone else is assigned to this task");
   }
 
   const completed = !item.completed;
   const updated = await prisma.repairChecklistItem.update({
     where: { id: itemId },
-    data: { completed, completedAt: completed ? new Date() : null },
+    data: {
+      completed,
+      completedAt: completed ? new Date() : null,
+      // Ticking an unclaimed task records who actually did it.
+      ...(completed && !item.assignedToId ? { assignedToId: user.id } : {}),
+    },
   });
 
   await prisma.auditLog.create({
@@ -108,13 +109,6 @@ export async function toggleTaskComplete(itemId: string) {
   return updated;
 }
 
-const ADD_TASK_ROLES: string[] = [
-  ROLES.REPAIR_TECHNICIAN,
-  ROLES.QA_TECHNICIAN,
-  ROLES.TEAM_LEADER,
-  ROLES.PRODUCTION_MANAGER,
-];
-
 export async function addChecklistTask(input: {
   jobId: string;
   phase: string;
@@ -123,9 +117,6 @@ export async function addChecklistTask(input: {
   title: string;
 }) {
   const user = await requireUser();
-  if (!ADD_TASK_ROLES.includes(user.role)) {
-    throw new Error("Not permitted to add checklist tasks");
-  }
   const title = input.title.trim();
   if (!title) throw new Error("Task title is required");
 

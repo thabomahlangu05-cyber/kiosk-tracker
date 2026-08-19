@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/auth";
+import { can } from "@/lib/rbac";
 import { KINDS, PRIORITIES, ROLES } from "@/lib/enums";
 import { firstStage, isQaStage, nextStage } from "@/lib/workflow";
 import {
@@ -17,29 +18,14 @@ export interface IntakeState {
   error?: string;
 }
 
-/** Whether a user may modify (advance/assign) a given job. */
-function canModifyJob(
-  user: SessionUser,
-  job: {
-    assignedTeamId: string | null;
-    assignedTechId: string | null;
-    currentStage: string;
-  },
-): boolean {
-  if (user.role === ROLES.PRODUCTION_MANAGER) return true;
-  if (user.role === ROLES.TEAM_LEADER) return true;
-  // Repair is a shared effort now (per-task self-assignment), so any repair
-  // technician may advance it once the checklist is done — not just whoever
-  // claimed the whole job.
-  if (user.role === ROLES.REPAIR_TECHNICIAN && job.currentStage === "REPAIR")
-    return true;
-  // Otherwise technicians act on work they've claimed, whatever stage it's at.
-  if (
-    user.role === ROLES.REPAIR_TECHNICIAN ||
-    user.role === ROLES.QA_TECHNICIAN
-  )
-    return job.assignedTechId === user.id;
-  return false;
+/**
+ * Whether a user may advance a job. Nobody claims a whole kiosk any more —
+ * work is assigned task by task — so anyone allowed to advance stages may
+ * advance any unit. The checklist gates below are what actually stop a unit
+ * moving before the work is done.
+ */
+function canModifyJob(user: SessionUser): boolean {
+  return can(user.role, "job:advanceStage");
 }
 
 export async function createUnit(
@@ -133,7 +119,7 @@ export async function advanceStage(formData: FormData): Promise<void> {
     include: { kiosk: true, transitions: { where: { exitedAt: null } } },
   });
   if (!job || job.status === "COMPLETED") return;
-  if (!canModifyJob(user, job)) redirect("/dashboard");
+  if (!canModifyJob(user)) redirect("/dashboard");
 
   // QA stages are only moved via a QA inspection (pass/fail), never a plain advance.
   if (isQaStage(job.kind, job.currentStage)) redirect("/qa");

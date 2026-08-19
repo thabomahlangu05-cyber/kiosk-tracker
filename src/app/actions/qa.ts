@@ -102,6 +102,18 @@ export async function recordInspection(
         }`,
       },
     }),
+    // A failed unit goes back for rework, so its QA checks have to be done
+    // again once it returns — otherwise the second inspection would open with
+    // every check already ticked from the first pass. Repair tasks are left
+    // alone: a fault usually means redoing one thing, not all 25.
+    ...(result === QA_RESULT.FAIL
+      ? [
+          prisma.repairChecklistItem.updateMany({
+            where: { jobId, phase: CHECKLIST_PHASE.QA },
+            data: { completed: false, completedAt: null, assignedToId: null },
+          }),
+        ]
+      : []),
   ]);
 
   const serial = encodeURIComponent(job.kiosk.serialNumber);

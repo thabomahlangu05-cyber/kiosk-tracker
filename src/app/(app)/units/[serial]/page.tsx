@@ -12,7 +12,6 @@ import {
 } from "@/lib/repairChecklist";
 import type { SessionUser } from "@/lib/session";
 import { advanceStage } from "@/app/actions/jobs";
-import { claimJob, releaseJob } from "@/app/actions/assignment";
 import {
   claimTaskAction,
   releaseTaskAction,
@@ -89,11 +88,8 @@ export default async function UnitDetailPage({
   const qaDoneCount = qaItems.filter((i) => i.completed).length;
   const qaComplete = qaItems.every((i) => i.completed);
 
-  const canAddTask =
-    user.role === ROLES.REPAIR_TECHNICIAN ||
-    user.role === ROLES.QA_TECHNICIAN ||
-    user.role === ROLES.TEAM_LEADER ||
-    user.role === ROLES.PRODUCTION_MANAGER;
+  // Task-level assignment is open to the whole floor.
+  const canAddTask = true;
   const canDeleteTask =
     user.role === ROLES.TEAM_LEADER || user.role === ROLES.PRODUCTION_MANAGER;
   const sections = groupChecklist(
@@ -122,12 +118,7 @@ export default async function UnitDetailPage({
     ? catalogue.filter((p) => p.quantityOnHand > 0)
     : [];
 
-  const canRequestParts =
-    !completed &&
-    (user.role === ROLES.REPAIR_TECHNICIAN ||
-      user.role === ROLES.QA_TECHNICIAN ||
-      user.role === ROLES.TEAM_LEADER ||
-      user.role === ROLES.PRODUCTION_MANAGER);
+  const canRequestParts = !completed;
   const openRequests = job.partRequests.filter(
     (r) => r.status === "NEEDED",
   );
@@ -138,25 +129,9 @@ export default async function UnitDetailPage({
     0,
   );
 
-  const isTechnician =
-    user.role === ROLES.REPAIR_TECHNICIAN || user.role === ROLES.QA_TECHNICIAN;
   // Mirrors canModifyJob() in src/app/actions/jobs.ts — keep the two in step.
-  const canModify =
-    user.role === ROLES.PRODUCTION_MANAGER ||
-    user.role === ROLES.TEAM_LEADER ||
-    // Repair is shared work, so any repair tech may advance it off that stage.
-    (user.role === ROLES.REPAIR_TECHNICIAN && atRepair) ||
-    (isTechnician && job.assignedTechId === user.id);
+  const canModify = can(user.role, "job:advanceStage");
 
-  // Technicians claim unclaimed work at any stage, and can hand it back —
-  // except Repair, which uses per-task self-assignment instead (below).
-  const showClaim =
-    isTechnician && !completed && !job.assignedTechId && !(atRepair && hasChecklist);
-  const showRelease =
-    isTechnician &&
-    !completed &&
-    job.assignedTechId === user.id &&
-    !(atRepair && hasChecklist);
   const showAdvance =
     can(user.role, "job:advanceStage") &&
     canModify &&
@@ -183,23 +158,6 @@ export default async function UnitDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {showClaim ? (
-            <form action={claimJob}>
-              <input type="hidden" name="jobId" value={job.id} />
-              <Button type="submit">Claim this unit</Button>
-            </form>
-          ) : null}
-          {showRelease ? (
-            <form action={releaseJob}>
-              <input type="hidden" name="jobId" value={job.id} />
-              <button
-                type="submit"
-                className="inline-flex items-center rounded-md border border-[var(--border)] px-4 py-2 text-sm text-gray-300 hover:bg-[var(--border)]"
-              >
-                Release
-              </button>
-            </form>
-          ) : null}
           {showAdvance && next ? (
             <form action={advanceStage}>
               <input type="hidden" name="jobId" value={job.id} />
@@ -733,8 +691,10 @@ function TaskRow({
   const isMine = item.assignedToId === user.id;
   const isManager =
     user.role === ROLES.PRODUCTION_MANAGER || user.role === ROLES.TEAM_LEADER;
-  const canToggle = isMine || isManager;
-  const canClaim = user.role === ROLES.REPAIR_TECHNICIAN;
+  // Anyone may pick up an unclaimed task or tick it off; only the holder (or a
+  // manager) can touch one somebody else has taken.
+  const canToggle = isMine || isManager || !item.assignedToId;
+  const canClaim = true;
 
   return (
     <div className="flex items-center gap-2 py-1.5 text-sm">
