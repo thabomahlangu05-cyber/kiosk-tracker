@@ -39,7 +39,15 @@ const MATRIX: Record<Action, Role[]> = {
     INVENTORY_MANAGER,
     QA_TECHNICIAN,
   ],
-  "intake:create": [PRODUCTION_MANAGER, TEAM_LEADER, INVENTORY_OFFICER],
+  // Anyone on the floor can log a kiosk in at Receiving.
+  "intake:create": [
+    PRODUCTION_MANAGER,
+    TEAM_LEADER,
+    INVENTORY_MANAGER,
+    INVENTORY_OFFICER,
+    REPAIR_TECHNICIAN,
+    QA_TECHNICIAN,
+  ],
   "job:assign": [PRODUCTION_MANAGER, TEAM_LEADER],
   // Both technician roles can claim and move work at any stage, so both need
   // this (it also gates the "My Work" queue in NAV below).

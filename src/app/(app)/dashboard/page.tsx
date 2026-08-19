@@ -70,9 +70,8 @@ export default async function DashboardPage({
       where: whereForTab(activeTab),
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
       include: {
-        kiosk: { include: { model: true } },
+        kiosk: true,
         assignedTech: true,
-        assignedTeam: true,
       },
     }),
   ]);
@@ -127,7 +126,7 @@ export default async function DashboardPage({
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="px-4 py-3 font-medium">Kiosk ID / Model</th>
+              <th className="px-4 py-3 font-medium">Kiosk ID / Group</th>
               <th className="px-4 py-3 font-medium">Stage</th>
               <th className="px-4 py-3 font-medium">Priority</th>
               <th className="px-4 py-3 font-medium">Assignee</th>
@@ -144,7 +143,7 @@ export default async function DashboardPage({
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <KindBadge kind={job.kind} />
-                    {job.kiosk.model.name}
+                    {job.kiosk.group}
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -156,9 +155,7 @@ export default async function DashboardPage({
                   <Badge tone="amber">{job.priority.toLowerCase()}</Badge>
                 </td>
                 <td className="px-4 py-3 text-gray-400">
-                  {job.assignedTech?.name ??
-                    job.assignedTeam?.name ??
-                    "Unassigned"}
+                  {job.assignedTech?.name ?? "Unassigned"}
                 </td>
                 <td className="px-4 py-3 text-gray-500">
                   {formatDateTime(job.createdAt)}

@@ -23,6 +23,15 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const KINDS = { BUILD: "BUILD", REPAIR: "REPAIR" } as const;
 export type Kind = (typeof KINDS)[keyof typeof KINDS];
 
+/** Customer groups a kiosk can belong to — replaces the old kiosk model. */
+export const GROUPS = ["Sanlam", "TFG", "AKD"] as const;
+export type Group = (typeof GROUPS)[number];
+
+/** Which checklist a RepairChecklistItem belongs to. */
+export const CHECKLIST_PHASE = { REPAIR: "REPAIR", QA: "QA" } as const;
+export type ChecklistPhase =
+  (typeof CHECKLIST_PHASE)[keyof typeof CHECKLIST_PHASE];
+
 export const JOB_STATUS = {
   IN_PROGRESS: "IN_PROGRESS",
   ON_HOLD: "ON_HOLD",

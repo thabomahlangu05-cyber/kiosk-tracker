@@ -20,7 +20,7 @@ export default async function InspectPage({
   const job = await prisma.job.findFirst({
     where: { kiosk: { serialNumber: serial } },
     orderBy: { createdAt: "desc" },
-    include: { kiosk: { include: { model: true } } },
+    include: { kiosk: true },
   });
   if (!job) notFound();
 
@@ -39,7 +39,7 @@ export default async function InspectPage({
           <KindBadge kind={job.kind} />
         </h1>
         <p className="text-sm text-slate-500">
-          {job.kiosk.model.name} · stage {stageLabel(job.kind, job.currentStage)}
+          {job.kiosk.group} · stage {stageLabel(job.kind, job.currentStage)}
         </p>
       </div>
 

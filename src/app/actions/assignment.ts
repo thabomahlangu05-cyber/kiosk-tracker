@@ -98,10 +98,7 @@ export async function getAvailableJobs() {
       // src/app/actions/checklist.ts) instead of whole-job claim/release.
       currentStage: { notIn: [...TERMINAL_STAGES, "REPAIR"] },
     },
-    include: {
-      kiosk: { include: { model: true } },
-      assignedTeam: true,
-    },
+    include: { kiosk: true },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
 }
@@ -113,10 +110,7 @@ export async function getMyJobs() {
 
   return prisma.job.findMany({
     where: { assignedTechId: user.id, status: "IN_PROGRESS" },
-    include: {
-      kiosk: { include: { model: true } },
-      assignedTeam: true,
-    },
+    include: { kiosk: true },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
 }

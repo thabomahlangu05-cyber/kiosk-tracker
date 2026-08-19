@@ -24,8 +24,11 @@ async function loadItem(itemId: string) {
  * what replaces whole-job locking for the Repair stage. */
 export async function selfAssignToTask(itemId: string) {
   const user = await requireUser();
-  if (user.role !== ROLES.REPAIR_TECHNICIAN) {
-    throw new Error("Only repair technicians can claim checklist tasks");
+  if (
+    user.role !== ROLES.REPAIR_TECHNICIAN &&
+    user.role !== ROLES.QA_TECHNICIAN
+  ) {
+    throw new Error("Only technicians can claim checklist tasks");
   }
 
   const item = await loadItem(itemId);
@@ -77,10 +80,7 @@ export async function toggleTaskComplete(itemId: string) {
   const item = await loadItem(itemId);
 
   const isManager =
-    user.role === ROLES.PRODUCTION_MANAGER ||
-    (user.role === ROLES.TEAM_LEADER &&
-      !!user.teamId &&
-      item.job.assignedTeamId === user.teamId);
+    user.role === ROLES.PRODUCTION_MANAGER || user.role === ROLES.TEAM_LEADER;
   if (item.assignedToId !== user.id && !isManager) {
     throw new Error("Assign yourself to this task before completing it");
   }
@@ -110,12 +110,14 @@ export async function toggleTaskComplete(itemId: string) {
 
 const ADD_TASK_ROLES: string[] = [
   ROLES.REPAIR_TECHNICIAN,
+  ROLES.QA_TECHNICIAN,
   ROLES.TEAM_LEADER,
   ROLES.PRODUCTION_MANAGER,
 ];
 
 export async function addChecklistTask(input: {
   jobId: string;
+  phase: string;
   section: string;
   subsection: string | null;
   title: string;
@@ -141,6 +143,7 @@ export async function addChecklistTask(input: {
   const created = await prisma.repairChecklistItem.create({
     data: {
       jobId: input.jobId,
+      phase: input.phase,
       section: input.section,
       subsection: input.subsection,
       title,
@@ -184,11 +187,12 @@ export async function toggleTaskAction(formData: FormData): Promise<void> {
 
 export async function addTaskAction(formData: FormData): Promise<void> {
   const jobId = String(formData.get("jobId") ?? "");
+  const phase = String(formData.get("phase") ?? "REPAIR");
   const section = String(formData.get("section") ?? "");
   const subsection = String(formData.get("subsection") ?? "") || null;
   const title = String(formData.get("title") ?? "");
   if (jobId && section && title) {
-    await addChecklistTask({ jobId, section, subsection, title });
+    await addChecklistTask({ jobId, phase, section, subsection, title });
   }
 }
 

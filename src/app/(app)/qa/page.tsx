@@ -14,7 +14,7 @@ export default async function QaPage() {
     prisma.job.findMany({
       where: { status: JOB_STATUS.IN_PROGRESS, currentStage: "QA" },
       orderBy: { createdAt: "asc" },
-      include: { kiosk: { include: { model: true } }, assignedTeam: true },
+      include: { kiosk: true },
     }),
     firstPassYield(),
     defectBreakdown(),
@@ -65,7 +65,7 @@ export default async function QaPage() {
                     {job.kiosk.serialNumber}
                   </span>
                   <KindBadge kind={job.kind} />
-                  <span className="text-gray-500">{job.kiosk.model.name}</span>
+                  <span className="text-gray-500">{job.kiosk.group}</span>
                 </span>
                 <Link
                   href={`/qa/${encodeURIComponent(job.kiosk.serialNumber)}`}

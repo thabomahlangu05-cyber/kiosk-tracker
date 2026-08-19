@@ -101,7 +101,6 @@ export default async function QueuePage() {
                       </p>
                       <p className="text-xs text-gray-500">
                         {stageLabel(job.kind, job.currentStage)}
-                        {job.assignedTeam ? ` · ${job.assignedTeam.name}` : ""}
                       </p>
                     </Link>
                     <KindBadge kind={job.kind} />

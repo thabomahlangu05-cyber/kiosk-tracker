@@ -15,9 +15,8 @@ export default async function UnitsPage() {
     where: viewAll ? {} : { assignedTechId: user.id },
     orderBy: { createdAt: "desc" },
     include: {
-      kiosk: { include: { model: true } },
+      kiosk: true,
       assignedTech: true,
-      assignedTeam: true,
     },
   });
 
@@ -65,7 +64,7 @@ export default async function UnitsPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-2 text-slate-600">
-                  {job.kiosk.model.name}
+                  {job.kiosk.group}
                 </td>
                 <td className="px-4 py-2">
                   <KindBadge kind={job.kind} />
@@ -77,9 +76,7 @@ export default async function UnitsPage() {
                   <StatusBadge status={job.status} />
                 </td>
                 <td className="px-4 py-2 text-slate-600">
-                  {job.assignedTech?.name ??
-                    job.assignedTeam?.name ??
-                    "Unassigned"}
+                  {job.assignedTech?.name ?? "Unassigned"}
                 </td>
                 <td className="px-4 py-2 text-slate-400">
                   {formatDateTime(job.createdAt)}

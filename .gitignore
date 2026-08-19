@@ -45,3 +45,6 @@ next-env.d.ts
 /dev.db-journal
 *.db
 *.db-journal
+
+# Local database backups (may contain password hashes)
+backup-*.json

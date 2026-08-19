@@ -7,7 +7,6 @@ import {
   BUILD_STAGES,
   REPAIR_STAGES,
 } from "../src/lib/enums";
-import { REPAIR_CHECKLIST_TEMPLATE } from "../src/lib/repairChecklist";
 
 // Seed runs standalone via `tsx`; load .env for DATABASE_URL.
 try {
@@ -64,21 +63,6 @@ async function main() {
     });
   }
 
-  // --- Kiosk models --------------------------------------------------------
-  const models = [
-    { name: "GoTyme Kiosk G1", description: "First-generation banking kiosk" },
-    { name: "GoTyme Kiosk G2", description: "Second-generation banking kiosk" },
-  ];
-  const modelIds: Record<string, string> = {};
-  for (const m of models) {
-    const rec = await prisma.kioskModel.upsert({
-      where: { name: m.name },
-      update: { description: m.description },
-      create: m,
-    });
-    modelIds[m.name] = rec.id;
-  }
-
   // --- Parts inventory -----------------------------------------------------
   const parts = [
     { sku: "DISP-001", name: "LCD Display Panel", category: "Display", quantityOnHand: 40, reorderLevel: 10, unitCost: 120, binLocation: "A1" },
@@ -105,16 +89,11 @@ async function main() {
   }
 
   // --- Users ---------------------------------------------------------------
-  async function upsertUser(
-    email: string,
-    name: string,
-    role: string,
-    teamId?: string | null,
-  ) {
+  async function upsertUser(email: string, name: string, role: string) {
     return prisma.user.upsert({
       where: { email },
-      update: { name, role, teamId: teamId ?? null },
-      create: { email, name, role, passwordHash, teamId: teamId ?? null },
+      update: { name, role, teamId: null },
+      create: { email, name, role, passwordHash, teamId: null },
     });
   }
 
@@ -126,130 +105,23 @@ async function main() {
   await upsertUser("qa1@kiosk.local", "Quality Naidoo", ROLES.QA_TECHNICIAN);
   await upsertUser("qa2@kiosk.local", "Quality Pillay", ROLES.QA_TECHNICIAN);
 
-  // Team leaders (created before teams so we can set leaderId).
+  // Team leaders (a permission level; there are no Team records any more).
   const leaderNames = ["Lead Khumalo", "Lead Sithole", "Lead Adams"];
-  const leaders = [];
   for (let i = 0; i < 3; i++) {
-    leaders.push(
-      await upsertUser(`tl${i + 1}@kiosk.local`, leaderNames[i], ROLES.TEAM_LEADER),
-    );
+    await upsertUser(`tl${i + 1}@kiosk.local`, leaderNames[i], ROLES.TEAM_LEADER);
   }
 
-  // Teams led by the team leaders.
-  const teamNames = ["Line A", "Line B", "Line C"];
-  const teams = [];
-  for (let i = 0; i < 3; i++) {
-    const team = await prisma.team.upsert({
-      where: { name: teamNames[i] },
-      update: { leaderId: leaders[i].id },
-      create: { name: teamNames[i], leaderId: leaders[i].id },
-    });
-    teams.push(team);
-    // Put the leader on their own team.
-    await prisma.user.update({
-      where: { id: leaders[i].id },
-      data: { teamId: team.id },
-    });
-  }
-
-  // 15 repair/build technicians, distributed round-robin across the 3 teams.
+  // 15 repair/build technicians.
   for (let i = 0; i < 15; i++) {
-    const team = teams[i % 3];
     await upsertUser(
       `tech${i + 1}@kiosk.local`,
       `Technician ${i + 1}`,
       ROLES.REPAIR_TECHNICIAN,
-      team.id,
     );
   }
 
-  // --- Demo units (only if none exist yet) --------------------------------
-  const existingJobs = await prisma.job.count();
-  if (existingJobs === 0) {
-    const teamA = teams[0];
-    const teamB = teams[1];
-    const techA = await prisma.user.findFirst({
-      where: { role: ROLES.REPAIR_TECHNICIAN, teamId: teamA.id },
-    });
-    const techB = await prisma.user.findFirst({
-      where: { role: ROLES.REPAIR_TECHNICIAN, teamId: teamB.id },
-    });
-
-    // Build unit at first build stage.
-    const buildKiosk = await prisma.kiosk.create({
-      data: {
-        serialNumber: "DEMO-BUILD-0001",
-        modelId: modelIds["GoTyme Kiosk G2"],
-        kind: KINDS.BUILD,
-      },
-    });
-    await prisma.job.create({
-      data: {
-        kioskId: buildKiosk.id,
-        kind: KINDS.BUILD,
-        currentStage: BUILD_STAGES[0].name,
-        buildOrderRef: "BO-2026-001",
-        assignedTeamId: teamA.id,
-        assignedTechId: techA?.id ?? null,
-        transitions: {
-          create: { stage: BUILD_STAGES[0].name, userId: techA?.id ?? null },
-        },
-      },
-    });
-
-    // Repair unit at first repair stage.
-    const repairKiosk = await prisma.kiosk.create({
-      data: {
-        serialNumber: "DEMO-REPAIR-0001",
-        modelId: modelIds["GoTyme Kiosk G1"],
-        kind: KINDS.REPAIR,
-      },
-    });
-    await prisma.job.create({
-      data: {
-        kioskId: repairKiosk.id,
-        kind: KINDS.REPAIR,
-        currentStage: REPAIR_STAGES[0].name,
-        faultReport: "Card reader not responding; intermittent display flicker.",
-        assignedTeamId: teamB.id,
-        assignedTechId: techB?.id ?? null,
-        transitions: {
-          create: { stage: REPAIR_STAGES[0].name, userId: techB?.id ?? null },
-        },
-      },
-    });
-  }
-
-  // --- Backfill repair checklists -----------------------------------------
-  // REPAIR jobs created before the per-task checklist existed have none; give
-  // them the standard template so technicians can self-assign tasks. New jobs
-  // get theirs at intake (createUnit in src/app/actions/jobs.ts).
-  // Only units still at or before the Repair stage: retrofitting an all-unchecked
-  // checklist onto something already dispatched would just be noise.
-  const repairJobs = await prisma.job.findMany({
-    where: {
-      kind: KINDS.REPAIR,
-      currentStage: { in: ["RECEIVING", "REPAIR"] },
-    },
-    select: { id: true, _count: { select: { repairChecklist: true } } },
-  });
-  let backfilled = 0;
-  for (const job of repairJobs) {
-    if (job._count.repairChecklist > 0) continue;
-    await prisma.repairChecklistItem.createMany({
-      data: REPAIR_CHECKLIST_TEMPLATE.map((t, i) => ({
-        jobId: job.id,
-        section: t.section,
-        subsection: t.subsection,
-        title: t.title,
-        sequence: i,
-      })),
-    });
-    backfilled++;
-  }
-
   console.log(
-    `Seed complete. ${await prisma.user.count()} users, ${await prisma.team.count()} teams, ${await prisma.part.count()} parts, ${backfilled} repair checklist(s) backfilled. Default password: ${DEFAULT_PASSWORD}`,
+    `Seed complete. ${await prisma.user.count()} users, ${await prisma.part.count()} parts. Default password: ${DEFAULT_PASSWORD}`,
   );
 }
 

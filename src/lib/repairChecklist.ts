@@ -99,6 +99,81 @@ export const REPAIR_CHECKLIST_TEMPLATE: ChecklistTemplateItem[] = [
   },
 ];
 
+/** QA-stage checklist, seeded alongside the repair one at intake. */
+export const QA_CHECKLIST_TEMPLATE: ChecklistTemplateItem[] = [
+  // Software
+  { section: "Software", subsection: null, title: "Intunes sync" },
+  { section: "Software", subsection: null, title: "Kihama Server" },
+  { section: "Software", subsection: null, title: "Kihama Demo" },
+  { section: "Software", subsection: null, title: "GoTyme Banking App" },
+  { section: "Software", subsection: null, title: "Windows 11 update" },
+  { section: "Software", subsection: null, title: "Card Printer Firmware" },
+  { section: "Software", subsection: null, title: "Card Printer Test" },
+  { section: "Software", subsection: null, title: "Stratos" },
+  { section: "Software", subsection: null, title: "Email accounts" },
+  { section: "Software", subsection: null, title: "Data dog" },
+
+  // Hardware
+  { section: "Hardware", subsection: null, title: "Power AC/DC test" },
+  {
+    section: "Hardware",
+    subsection: null,
+    title: "Card Printer functionality and upgrade",
+  },
+  { section: "Hardware", subsection: null, title: "Gloki Test" },
+  {
+    section: "Hardware",
+    subsection: null,
+    title: "Wiring pull and neatness test",
+  },
+  { section: "Hardware", subsection: null, title: "Connectors" },
+  { section: "Hardware", subsection: null, title: "Switches test" },
+  {
+    section: "Hardware",
+    subsection: null,
+    title: "PCBs proper installation and functionality",
+  },
+  { section: "Hardware", subsection: null, title: "Sensors test" },
+  { section: "Hardware", subsection: null, title: "LEDs test" },
+  { section: "Hardware", subsection: null, title: "Camera test" },
+
+  // Network Connectivity
+  {
+    section: "Network Connectivity",
+    subsection: null,
+    title: "Both SIMs connect",
+  },
+  {
+    section: "Network Connectivity",
+    subsection: null,
+    title: "RMS enabled and connected",
+  },
+  {
+    section: "Network Connectivity",
+    subsection: null,
+    title: "Internet search",
+  },
+  { section: "Network Connectivity", subsection: null, title: "APN set" },
+  {
+    section: "Network Connectivity",
+    subsection: null,
+    title: "Router backup file",
+  },
+
+  // Live Test
+  {
+    section: "Live Test",
+    subsection: null,
+    title: "Banking App login (fingerprint scan)",
+  },
+  { section: "Live Test", subsection: null, title: "Customer Screen touch" },
+  {
+    section: "Live Test",
+    subsection: null,
+    title: "Marketing content display",
+  },
+];
+
 export interface ChecklistItemLike {
   id: string;
   section: string;

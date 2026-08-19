@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/rbac";
-import { JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
+import { CHECKLIST_PHASE, JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
 import { isQaStage, nextStage } from "@/lib/workflow";
 import {
   groupChecklist,
@@ -44,8 +44,7 @@ export default async function UnitDetailPage({
     where: { kiosk: { serialNumber: serial } },
     orderBy: { createdAt: "desc" },
     include: {
-      kiosk: { include: { model: true } },
-      assignedTeam: true,
+      kiosk: true,
       assignedTech: true,
       transitions: { orderBy: { enteredAt: "asc" }, include: { user: true } },
       inspections: {
@@ -77,19 +76,30 @@ export default async function UnitDetailPage({
   const completed = job.status === JOB_STATUS.COMPLETED;
   const atQa = isQaStage(job.kind, job.currentStage);
   const atRepair = job.currentStage === "REPAIR";
-  const hasChecklist = job.repairChecklist.length > 0;
-  const repairComplete =
-    !hasChecklist || job.repairChecklist.every((i) => i.completed);
-  const doneCount = job.repairChecklist.filter((i) => i.completed).length;
+
+  const repairItems = job.repairChecklist.filter(
+    (i) => i.phase === CHECKLIST_PHASE.REPAIR,
+  );
+  const qaItems = job.repairChecklist.filter(
+    (i) => i.phase === CHECKLIST_PHASE.QA,
+  );
+  const hasChecklist = repairItems.length > 0;
+  const repairComplete = repairItems.every((i) => i.completed);
+  const doneCount = repairItems.filter((i) => i.completed).length;
+  const qaDoneCount = qaItems.filter((i) => i.completed).length;
+  const qaComplete = qaItems.every((i) => i.completed);
+
   const canAddTask =
     user.role === ROLES.REPAIR_TECHNICIAN ||
+    user.role === ROLES.QA_TECHNICIAN ||
     user.role === ROLES.TEAM_LEADER ||
     user.role === ROLES.PRODUCTION_MANAGER;
   const canDeleteTask =
     user.role === ROLES.TEAM_LEADER || user.role === ROLES.PRODUCTION_MANAGER;
-  const sections = hasChecklist
-    ? groupChecklist(job.repairChecklist as unknown as ChecklistItemLike[])
-    : [];
+  const sections = groupChecklist(
+    repairItems as unknown as ChecklistItemLike[],
+  );
+  const qaSections = groupChecklist(qaItems as unknown as ChecklistItemLike[]);
 
   const canIssue = can(user.role, "inventory:move") && !completed;
   // The catalogue also backs the request box's autocomplete, so everyone who
@@ -123,9 +133,7 @@ export default async function UnitDetailPage({
   // Mirrors canModifyJob() in src/app/actions/jobs.ts — keep the two in step.
   const canModify =
     user.role === ROLES.PRODUCTION_MANAGER ||
-    (user.role === ROLES.TEAM_LEADER &&
-      !!user.teamId &&
-      job.assignedTeamId === user.teamId) ||
+    user.role === ROLES.TEAM_LEADER ||
     // Repair is shared work, so any repair tech may advance it off that stage.
     (user.role === ROLES.REPAIR_TECHNICIAN && atRepair) ||
     (isTechnician && job.assignedTechId === user.id);
@@ -158,7 +166,7 @@ export default async function UnitDetailPage({
             <StatusBadge status={job.status} />
           </h1>
           <p className="text-sm text-slate-500">
-            {job.kiosk.model.name} · current stage:{" "}
+            {job.kiosk.group} · current stage:{" "}
             <span className="font-medium text-slate-700">
               {stageLabel(job.kind, job.currentStage)}
             </span>
@@ -193,8 +201,14 @@ export default async function UnitDetailPage({
           ) : null}
           {atRepair && hasChecklist && !repairComplete && !completed ? (
             <span className="text-sm text-slate-500">
-              {doneCount}/{job.repairChecklist.length} checklist tasks
-              complete — finish them all to advance
+              {doneCount}/{repairItems.length} repair tasks complete — finish
+              them all to advance
+            </span>
+          ) : null}
+          {atQa && !qaComplete && !completed ? (
+            <span className="text-sm text-slate-500">
+              {qaDoneCount}/{qaItems.length} QA checks complete — finish them
+              all to pass
             </span>
           ) : null}
           {showInspect ? (
@@ -212,65 +226,31 @@ export default async function UnitDetailPage({
       </div>
 
       {hasChecklist ? (
-        <Card>
-          <CardHeader
-            title="Repair Workflow"
-            action={
-              <span className="text-xs text-gray-400">
-                {doneCount}/{job.repairChecklist.length}
-              </span>
-            }
-          />
-          <CardBody className="space-y-4">
-            {sections.map((section) => (
-              <details
-                key={section.name}
-                open
-                className="rounded-md border border-[var(--border)]"
-              >
-                <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-semibold text-white">
-                  {section.name}
-                  <span className="text-xs font-normal text-gray-400">
-                    {countDone(section)}/{countTotal(section)}
-                  </span>
-                </summary>
-                <div className="space-y-3 border-t border-[var(--border)] p-3">
-                  {section.directItems.length > 0 ? (
-                    <TaskList
-                      jobId={job.id}
-                      section={section.name}
-                      subsection={null}
-                      items={section.directItems}
-                      user={user}
-                      canAddTask={canAddTask}
-                      canDeleteTask={canDeleteTask}
-                    />
-                  ) : null}
-                  {section.subsections.map((sub) => (
-                    <div key={sub.name}>
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        {sub.name}
-                        <span className="ml-2 font-normal normal-case text-gray-600">
-                          {sub.items.filter((i) => i.completed).length}/
-                          {sub.items.length}
-                        </span>
-                      </p>
-                      <TaskList
-                        jobId={job.id}
-                        section={section.name}
-                        subsection={sub.name}
-                        items={sub.items}
-                        user={user}
-                        canAddTask={canAddTask}
-                        canDeleteTask={canDeleteTask}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ))}
-          </CardBody>
-        </Card>
+        <ChecklistCard
+          title="Repair Workflow"
+          jobId={job.id}
+          phase={CHECKLIST_PHASE.REPAIR}
+          sections={sections}
+          done={doneCount}
+          total={repairItems.length}
+          user={user}
+          canAddTask={canAddTask}
+          canDeleteTask={canDeleteTask}
+        />
+      ) : null}
+
+      {qaItems.length > 0 ? (
+        <ChecklistCard
+          title="Quality"
+          jobId={job.id}
+          phase={CHECKLIST_PHASE.QA}
+          sections={qaSections}
+          done={qaDoneCount}
+          total={qaItems.length}
+          user={user}
+          canAddTask={canAddTask}
+          canDeleteTask={canDeleteTask}
+        />
       ) : null}
 
       <Card>
@@ -417,7 +397,6 @@ export default async function UnitDetailPage({
         <Card className="lg:col-span-1">
           <CardHeader title="Details" />
           <CardBody className="space-y-3 text-sm">
-            <Detail label="Team" value={job.assignedTeam?.name ?? "—"} />
             <Detail label="Technician" value={job.assignedTech?.name ?? "—"} />
             <Detail
               label="Priority"
@@ -588,9 +567,97 @@ function countDone(section: GroupedSection): number {
   return direct + nested;
 }
 
+/** A whole checklist (Repair or QA): collapsible sections of claimable tasks. */
+function ChecklistCard({
+  title,
+  jobId,
+  phase,
+  sections,
+  done,
+  total,
+  user,
+  canAddTask,
+  canDeleteTask,
+}: {
+  title: string;
+  jobId: string;
+  phase: string;
+  sections: GroupedSection[];
+  done: number;
+  total: number;
+  user: SessionUser;
+  canAddTask: boolean;
+  canDeleteTask: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader
+        title={title}
+        action={
+          <span className="text-xs text-gray-400">
+            {done}/{total}
+          </span>
+        }
+      />
+      <CardBody className="space-y-4">
+        {sections.map((section) => (
+          <details
+            key={section.name}
+            open
+            className="rounded-md border border-[var(--border)]"
+          >
+            <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-semibold text-white">
+              {section.name}
+              <span className="text-xs font-normal text-gray-400">
+                {countDone(section)}/{countTotal(section)}
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-[var(--border)] p-3">
+              {section.directItems.length > 0 ? (
+                <TaskList
+                  jobId={jobId}
+                  phase={phase}
+                  section={section.name}
+                  subsection={null}
+                  items={section.directItems}
+                  user={user}
+                  canAddTask={canAddTask}
+                  canDeleteTask={canDeleteTask}
+                />
+              ) : null}
+              {section.subsections.map((sub) => (
+                <div key={sub.name}>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {sub.name}
+                    <span className="ml-2 font-normal normal-case text-gray-600">
+                      {sub.items.filter((i) => i.completed).length}/
+                      {sub.items.length}
+                    </span>
+                  </p>
+                  <TaskList
+                    jobId={jobId}
+                    phase={phase}
+                    section={section.name}
+                    subsection={sub.name}
+                    items={sub.items}
+                    user={user}
+                    canAddTask={canAddTask}
+                    canDeleteTask={canDeleteTask}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </CardBody>
+    </Card>
+  );
+}
+
 /** One section/subsection's task rows, plus the "add task" input beneath them. */
 function TaskList({
   jobId,
+  phase,
   section,
   subsection,
   items,
@@ -599,6 +666,7 @@ function TaskList({
   canDeleteTask,
 }: {
   jobId: string;
+  phase: string;
   section: string;
   subsection: string | null;
   items: ChecklistItemLike[];
@@ -619,6 +687,7 @@ function TaskList({
       {canAddTask ? (
         <form action={addTaskAction} className="flex items-center gap-2 pt-1">
           <input type="hidden" name="jobId" value={jobId} />
+          <input type="hidden" name="phase" value={phase} />
           <input type="hidden" name="section" value={section} />
           {subsection ? (
             <input type="hidden" name="subsection" value={subsection} />

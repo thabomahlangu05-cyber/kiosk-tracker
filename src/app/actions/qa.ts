@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAction } from "@/lib/auth";
-import { JOB_STATUS, QA_RESULT } from "@/lib/enums";
+import { CHECKLIST_PHASE, JOB_STATUS, QA_RESULT } from "@/lib/enums";
 import { isQaStage, nextStage, reworkStage } from "@/lib/workflow";
 
 export interface QaState {
@@ -41,6 +41,18 @@ export async function recordInspection(
   }
   if (result === QA_RESULT.FAIL && defectTypeIds.length === 0) {
     return { error: "Select at least one defect for a failed inspection." };
+  }
+  // A pass means the QA checklist was actually worked through. A fail can be
+  // recorded at any point — that's the whole point of catching a problem early.
+  if (result === QA_RESULT.PASS) {
+    const incomplete = await prisma.repairChecklistItem.count({
+      where: { jobId, phase: CHECKLIST_PHASE.QA, completed: false },
+    });
+    if (incomplete > 0) {
+      return {
+        error: `Complete the QA checklist before passing (${incomplete} check(s) remaining).`,
+      };
+    }
   }
 
   // PASS advances to the next stage (Dispatch → complete); FAIL routes to rework.

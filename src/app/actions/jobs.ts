@@ -6,7 +6,11 @@ import { prisma } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/auth";
 import { KINDS, PRIORITIES, ROLES } from "@/lib/enums";
 import { firstStage, isQaStage, nextStage } from "@/lib/workflow";
-import { REPAIR_CHECKLIST_TEMPLATE } from "@/lib/repairChecklist";
+import {
+  REPAIR_CHECKLIST_TEMPLATE,
+  QA_CHECKLIST_TEMPLATE,
+} from "@/lib/repairChecklist";
+import { CHECKLIST_PHASE, GROUPS } from "@/lib/enums";
 import type { SessionUser } from "@/lib/session";
 
 export interface IntakeState {
@@ -23,8 +27,7 @@ function canModifyJob(
   },
 ): boolean {
   if (user.role === ROLES.PRODUCTION_MANAGER) return true;
-  if (user.role === ROLES.TEAM_LEADER)
-    return !!user.teamId && job.assignedTeamId === user.teamId;
+  if (user.role === ROLES.TEAM_LEADER) return true;
   // Repair is a shared effort now (per-task self-assignment), so any repair
   // technician may advance it once the checklist is done — not just whoever
   // claimed the whole job.
@@ -46,16 +49,16 @@ export async function createUnit(
   const user = await requireAction("intake:create");
 
   const serialNumber = String(formData.get("serialNumber") ?? "").trim();
-  const modelId = String(formData.get("modelId") ?? "");
+  const group = String(formData.get("group") ?? "").trim();
   const kind = String(formData.get("kind") ?? "");
   const priority = String(formData.get("priority") ?? PRIORITIES.NORMAL);
-  const assignedTeamId = String(formData.get("assignedTeamId") ?? "") || null;
   const assignedTechId = String(formData.get("assignedTechId") ?? "") || null;
   const buildOrderRef = String(formData.get("buildOrderRef") ?? "").trim() || null;
   const faultReport = String(formData.get("faultReport") ?? "").trim() || null;
 
   if (!serialNumber) return { error: "Serial number is required." };
-  if (!modelId) return { error: "Select a kiosk model." };
+  if (!GROUPS.includes(group as (typeof GROUPS)[number]))
+    return { error: "Select a group." };
   if (kind !== KINDS.BUILD && kind !== KINDS.REPAIR)
     return { error: "Select build or repair." };
 
@@ -64,35 +67,42 @@ export async function createUnit(
 
   const stage = firstStage(kind).name;
 
+  // Every unit gets the QA checklist; only repairs get the repair one (builds
+  // have no Repair stage). Technicians self-assign individual tasks once the
+  // unit reaches the matching stage.
+  const checklist = [
+    ...(kind === KINDS.REPAIR
+      ? REPAIR_CHECKLIST_TEMPLATE.map((t) => ({
+          ...t,
+          phase: CHECKLIST_PHASE.REPAIR,
+        }))
+      : []),
+    ...QA_CHECKLIST_TEMPLATE.map((t) => ({ ...t, phase: CHECKLIST_PHASE.QA })),
+  ];
+
   await prisma.kiosk.create({
     data: {
       serialNumber,
-      modelId,
+      group,
       kind,
       jobs: {
         create: {
           kind,
           priority,
           currentStage: stage,
-          assignedTeamId,
           assignedTechId,
           buildOrderRef: kind === KINDS.BUILD ? buildOrderRef : null,
           faultReport: kind === KINDS.REPAIR ? faultReport : null,
           transitions: { create: { stage, userId: user.id } },
-          // Repair jobs get the standard per-task checklist up front; any
-          // repair technician can self-assign to individual tasks once the
-          // unit reaches the Repair stage.
-          repairChecklist:
-            kind === KINDS.REPAIR
-              ? {
-                  create: REPAIR_CHECKLIST_TEMPLATE.map((t, i) => ({
-                    section: t.section,
-                    subsection: t.subsection,
-                    title: t.title,
-                    sequence: i,
-                  })),
-                }
-              : undefined,
+          repairChecklist: {
+            create: checklist.map((t, i) => ({
+              phase: t.phase,
+              section: t.section,
+              subsection: t.subsection,
+              title: t.title,
+              sequence: i,
+            })),
+          },
         },
       },
     },
@@ -133,7 +143,11 @@ export async function advanceStage(formData: FormData): Promise<void> {
   // hatch for a manager.
   if (job.currentStage === "REPAIR") {
     const incomplete = await prisma.repairChecklistItem.count({
-      where: { jobId: job.id, completed: false },
+      where: {
+        jobId: job.id,
+        phase: CHECKLIST_PHASE.REPAIR,
+        completed: false,
+      },
     });
     if (incomplete > 0) {
       throw new Error(

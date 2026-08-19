@@ -60,11 +60,12 @@ model KioskModel {
 model Kiosk {
   id           String   @id @default(cuid())
   serialNumber String   @unique
-  modelId      String
+  group        String // customer group: Sanlam | TFG | AKD (see GROUPS in src/lib/enums.ts)
+  modelId      String? // legacy: kiosks are identified by group now, not model
   kind         String // BUILD | REPAIR
   createdAt    DateTime @default(now())
 
-  model KioskModel @relation(fields: [modelId], references: [id])
+  model KioskModel? @relation(fields: [modelId], references: [id])
   jobs  Job[]
 }
 
@@ -114,13 +115,16 @@ model PartRequest {
   fulfilledBy User? @relation("PartRequestFulfilledBy", fields: [fulfilledById], references: [id])
 }
 
-// Per-task checklist for the Repair stage. Unlike Job.assignedTechId (whole
+// Per-task checklist for the hands-on stages. Unlike Job.assignedTechId (whole
 // unit locked to one tech), each item here has its own optional assignee so
-// multiple technicians can work a unit's repair concurrently.
+// multiple technicians can work a unit concurrently.
+// NOTE: despite the name, this table now backs BOTH the Repair-stage and the
+// QA-stage checklists — `phase` says which.
 model RepairChecklistItem {
   id           String    @id @default(cuid())
   jobId        String
-  section      String // "Top Console" | "Mid Console" | "Bottom Console" | "Troubleshooting" | "Branding"
+  phase        String    @default("REPAIR") // REPAIR | QA
+  section      String // Repair: "Top Console"…; QA: "Software" | "Hardware" | …
   subsection   String? // "Wiring" | "Boards" | "Battery Box"; null when the section has no subsection
   title        String
   sequence     Int // stable ordering within the job
