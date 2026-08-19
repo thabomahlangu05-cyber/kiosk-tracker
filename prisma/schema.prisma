@@ -252,7 +252,8 @@ model AuditLog {
 model HousekeepingTask {
   id          String   @id @default(cuid())
   title       String
-  category    String // CLEANING | TOOLS | SAFETY | GENERAL
+  category    String // CLEANING | TOOLS | STOCK | SAFETY | GENERAL
+  frequency   String   @default("ONCE") // ONCE | DAILY | WEEKLY | MONTHLY
   priority    String   @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
   status      String   @default("PENDING") // PENDING | ASSIGNED | IN_PROGRESS | COMPLETED | CANCELLED
   assignedToId String?

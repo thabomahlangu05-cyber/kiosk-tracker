@@ -27,6 +27,30 @@ export type Kind = (typeof KINDS)[keyof typeof KINDS];
 export const GROUPS = ["Sanlam", "TFG", "AKD"] as const;
 export type Group = (typeof GROUPS)[number];
 
+/** Housekeeping task categories, in the order they appear as tabs. */
+export const HOUSEKEEPING_CATEGORIES = [
+  "CLEANING",
+  "TOOLS",
+  "STOCK",
+  "SAFETY",
+  "GENERAL",
+] as const;
+export type HousekeepingCategory = (typeof HOUSEKEEPING_CATEGORIES)[number];
+
+/** How often a housekeeping task recurs. */
+export const HOUSEKEEPING_FREQUENCIES = [
+  "ONCE",
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+] as const;
+export type HousekeepingFrequency = (typeof HOUSEKEEPING_FREQUENCIES)[number];
+
+/** Title-case a SCREAMING_CASE enum value for display ("DAILY" -> "Daily"). */
+export function titleCase(value: string): string {
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
 /** Which checklist a RepairChecklistItem belongs to. */
 export const CHECKLIST_PHASE = { REPAIR: "REPAIR", QA: "QA" } as const;
 export type ChecklistPhase =
