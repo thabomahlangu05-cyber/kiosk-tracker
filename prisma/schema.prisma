@@ -35,6 +35,8 @@ model User {
   housekeepingAssigned    HousekeepingTask[] @relation("HousekeepingAssigned")
   housekeepingCreated     HousekeepingTask[] @relation("HousekeepingCreated")
   repairTasksAssigned     RepairChecklistItem[] @relation("RepairTaskAssigned")
+  partRequestsMade        PartRequest[]     @relation("PartRequestedBy")
+  partRequestsFulfilled   PartRequest[]     @relation("PartRequestFulfilledBy")
 }
 
 model Team {
@@ -88,6 +90,28 @@ model Job {
   inspections    QAInspection[]
   stockMovements StockMovement[]
   repairChecklist RepairChecklistItem[]
+  partRequests   PartRequest[]
+}
+
+// Parts a technician needs for a job but hasn't been given yet. Distinct from
+// StockMovement, which records stock that has actually left the store: a
+// request is a want, fulfilling one creates the ISSUE movement.
+model PartRequest {
+  id            String    @id @default(cuid())
+  jobId         String
+  partId        String? // set when the request matches a catalogue part
+  description   String // what the technician asked for, verbatim
+  quantity      Int       @default(1)
+  status        String    @default("REQUESTED") // REQUESTED | ISSUED | CANCELLED
+  requestedById String
+  fulfilledById String?
+  createdAt     DateTime  @default(now())
+  fulfilledAt   DateTime?
+
+  job         Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  part        Part? @relation(fields: [partId], references: [id])
+  requestedBy User  @relation("PartRequestedBy", fields: [requestedById], references: [id])
+  fulfilledBy User? @relation("PartRequestFulfilledBy", fields: [fulfilledById], references: [id])
 }
 
 // Per-task checklist for the Repair stage. Unlike Job.assignedTechId (whole
@@ -176,6 +200,7 @@ model Part {
   binLocation    String?
 
   movements StockMovement[]
+  requests  PartRequest[]
 }
 
 model StockMovement {

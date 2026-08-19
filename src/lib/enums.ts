@@ -64,6 +64,16 @@ export function movementSignedQty(type: string, quantity: number): number {
 export const QA_RESULT = { PASS: "PASS", FAIL: "FAIL" } as const;
 export type QaResult = (typeof QA_RESULT)[keyof typeof QA_RESULT];
 
+// Lives here rather than in the server-actions file: a "use server" module may
+// only export async functions.
+export const PART_REQUEST_STATUS = {
+  REQUESTED: "REQUESTED",
+  ISSUED: "ISSUED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type PartRequestStatus =
+  (typeof PART_REQUEST_STATUS)[keyof typeof PART_REQUEST_STATUS];
+
 // ---- Workflows ------------------------------------------------------------
 export interface StageDef {
   name: string; // stable key stored in Job.currentStage & StageDefinition.name

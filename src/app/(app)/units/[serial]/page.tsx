@@ -20,6 +20,11 @@ import {
   addTaskAction,
   deleteTaskAction,
 } from "@/app/actions/checklist";
+import {
+  requestPartAction,
+  cancelPartRequestAction,
+  fulfilPartRequestAction,
+} from "@/app/actions/partRequests";
 import { IssuePartForm } from "@/components/issue-part-form";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { KindBadge, StatusBadge, Badge } from "@/components/ui/badge";
@@ -59,6 +64,10 @@ export default async function UnitDetailPage({
         orderBy: { sequence: "asc" },
         include: { assignedTo: true },
       },
+      partRequests: {
+        orderBy: { createdAt: "asc" },
+        include: { requestedBy: true, part: true },
+      },
     },
   });
 
@@ -83,12 +92,27 @@ export default async function UnitDetailPage({
     : [];
 
   const canIssue = can(user.role, "inventory:move") && !completed;
+  // The catalogue also backs the request box's autocomplete, so everyone who
+  // can see the unit needs it — not just inventory staff.
+  const catalogue = await prisma.part.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, sku: true, quantityOnHand: true },
+  });
   const availableParts = canIssue
-    ? await prisma.part.findMany({
-        where: { quantityOnHand: { gt: 0 } },
-        orderBy: { name: "asc" },
-      })
+    ? catalogue.filter((p) => p.quantityOnHand > 0)
     : [];
+
+  const canRequestParts =
+    !completed &&
+    (user.role === ROLES.REPAIR_TECHNICIAN ||
+      user.role === ROLES.QA_TECHNICIAN ||
+      user.role === ROLES.TEAM_LEADER ||
+      user.role === ROLES.PRODUCTION_MANAGER);
+  const openRequests = job.partRequests.filter(
+    (r) => r.status === "REQUESTED",
+  );
+  const canManageRequests =
+    user.role === ROLES.TEAM_LEADER || user.role === ROLES.PRODUCTION_MANAGER;
   const partsCost = job.stockMovements.reduce(
     (sum, m) => sum + m.quantity * m.part.unitCost,
     0,
@@ -248,6 +272,146 @@ export default async function UnitDetailPage({
           </CardBody>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader title="Parts" />
+        <CardBody>
+          <div className="rounded-md border border-[var(--border)]">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+              <span className="text-sm font-semibold text-white">
+                Required Stock
+              </span>
+              <span className="text-xs text-gray-400">
+                {openRequests.length} item
+                {openRequests.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="space-y-1 p-3">
+              {job.partRequests.length === 0 ? (
+                <p className="py-4 text-center text-sm text-gray-500">
+                  No stock items added yet
+                </p>
+              ) : (
+                job.partRequests.map((req) => {
+                  const pending = req.status === "REQUESTED";
+                  const mine = req.requestedById === user.id;
+                  return (
+                    <div
+                      key={req.id}
+                      className="flex items-center gap-2 py-1.5 text-sm"
+                    >
+                      <span className="w-10 shrink-0 font-mono text-gray-400">
+                        ×{req.quantity}
+                      </span>
+                      <span
+                        className={
+                          req.status === "CANCELLED"
+                            ? "flex-1 text-gray-600 line-through"
+                            : "flex-1 text-gray-200"
+                        }
+                      >
+                        {req.description}
+                        {req.part ? (
+                          <span className="ml-2 text-xs text-gray-500">
+                            {req.part.sku} · {req.part.quantityOnHand} in stock
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-xs text-amber-500">
+                            not in catalogue
+                          </span>
+                        )}
+                      </span>
+                      <Badge
+                        tone={
+                          req.status === "ISSUED"
+                            ? "green"
+                            : req.status === "CANCELLED"
+                              ? "slate"
+                              : "amber"
+                        }
+                      >
+                        {req.status.toLowerCase()}
+                      </Badge>
+                      <span className="hidden w-28 shrink-0 truncate text-xs text-gray-500 sm:block">
+                        {req.requestedBy.name}
+                      </span>
+                      {pending && canIssue && req.part ? (
+                        <form action={fulfilPartRequestAction}>
+                          <input
+                            type="hidden"
+                            name="requestId"
+                            value={req.id}
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-md bg-[var(--primary)] px-3 py-1 text-xs font-medium text-slate-900 hover:opacity-90"
+                          >
+                            Issue
+                          </button>
+                        </form>
+                      ) : null}
+                      {pending && (mine || canManageRequests) ? (
+                        <form action={cancelPartRequestAction}>
+                          <input
+                            type="hidden"
+                            name="requestId"
+                            value={req.id}
+                          />
+                          <button
+                            type="submit"
+                            title="Cancel request"
+                            className="text-gray-600 hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </form>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+
+              {canRequestParts ? (
+                <form
+                  action={requestPartAction}
+                  className="flex items-center gap-2 pt-2"
+                >
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <input
+                    type="text"
+                    name="description"
+                    list="parts-catalogue"
+                    placeholder="Part / stock item…"
+                    required
+                    className="flex-1 rounded-md border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                  />
+                  <datalist id="parts-catalogue">
+                    {catalogue.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.sku} · {p.quantityOnHand} in stock
+                      </option>
+                    ))}
+                  </datalist>
+                  <input
+                    type="number"
+                    name="quantity"
+                    min="1"
+                    defaultValue={1}
+                    className="w-16 rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-center text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Request part"
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] text-gray-300 hover:bg-[var(--border)]"
+                  >
+                    +
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">

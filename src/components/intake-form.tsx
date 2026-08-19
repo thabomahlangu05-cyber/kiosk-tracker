@@ -26,7 +26,9 @@ export function IntakeForm({
   techs: Tech[];
 }) {
   const [state, formAction, pending] = useActionState(createUnit, initial);
-  const [kind, setKind] = useState<string>(KINDS.BUILD);
+  // No default: picking Build by accident sends the unit down the build
+  // pipeline, which has no Repair stage and so no repair checklist.
+  const [kind, setKind] = useState<string>("");
   const [teamId, setTeamId] = useState<string>("");
 
   const availableTechs = techs.filter((t) => !teamId || t.teamId === teamId);
@@ -56,11 +58,15 @@ export function IntakeForm({
           <Select
             id="kind"
             name="kind"
+            required
             value={kind}
             onChange={(e) => setKind(e.target.value)}
           >
+            <option value="" disabled>
+              Select build or repair…
+            </option>
+            <option value={KINDS.REPAIR}>Repair / refurbish</option>
             <option value={KINDS.BUILD}>Build (new)</option>
-            <option value={KINDS.REPAIR}>Repair</option>
           </Select>
         </div>
         <div>
@@ -107,7 +113,7 @@ export function IntakeForm({
           <Label htmlFor="buildOrderRef">Build order reference (optional)</Label>
           <Input id="buildOrderRef" name="buildOrderRef" placeholder="BO-2026-001" />
         </div>
-      ) : (
+      ) : kind === KINDS.REPAIR ? (
         <div>
           <Label htmlFor="faultReport">Fault report</Label>
           <Textarea
@@ -115,8 +121,11 @@ export function IntakeForm({
             name="faultReport"
             placeholder="Describe the reported fault…"
           />
+          <p className="mt-1 text-xs text-gray-500">
+            Repair units get the standard repair checklist automatically.
+          </p>
         </div>
-      )}
+      ) : null}
 
       {state.error ? (
         <p className="text-sm text-red-600">{state.error}</p>
