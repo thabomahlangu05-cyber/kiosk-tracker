@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/rbac";
 import { CHECKLIST_PHASE, JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
-import { isQaStage, nextStage } from "@/lib/workflow";
+import { getStage, isQaStage, nextStage } from "@/lib/workflow";
 import {
   groupChecklist,
   type ChecklistItemLike,
@@ -100,6 +100,16 @@ export default async function UnitDetailPage({
     repairItems as unknown as ChecklistItemLike[],
   );
   const qaSections = groupChecklist(qaItems as unknown as ChecklistItemLike[]);
+
+  // Each checklist only shows while it's the unit's business: the repair one
+  // disappears once the unit moves past Repair, and the QA one doesn't appear
+  // until it reaches QA. Comparing sequence (not stage name) keeps this right
+  // for builds, whose pipeline has different early stages.
+  const stageSeq = getStage(job.kind, job.currentStage)?.sequence ?? 0;
+  const repairSeq = getStage(job.kind, "REPAIR")?.sequence ?? Infinity;
+  const qaSeq = getStage(job.kind, "QA")?.sequence ?? Infinity;
+  const showRepairCard = repairItems.length > 0 && stageSeq <= repairSeq;
+  const showQaCard = qaItems.length > 0 && stageSeq >= qaSeq;
 
   const canIssue = can(user.role, "inventory:move") && !completed;
   // The catalogue also backs the request box's autocomplete, so everyone who
@@ -225,7 +235,7 @@ export default async function UnitDetailPage({
         </div>
       </div>
 
-      {hasChecklist ? (
+      {showRepairCard ? (
         <ChecklistCard
           title="Repair Workflow"
           jobId={job.id}
@@ -239,7 +249,7 @@ export default async function UnitDetailPage({
         />
       ) : null}
 
-      {qaItems.length > 0 ? (
+      {showQaCard ? (
         <ChecklistCard
           title="Quality"
           jobId={job.id}
