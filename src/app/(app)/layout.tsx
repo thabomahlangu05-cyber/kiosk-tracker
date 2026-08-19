@@ -2,10 +2,8 @@ import { requireUser } from "@/lib/auth";
 import { can, NAV } from "@/lib/rbac";
 import { ROLE_LABELS } from "@/lib/enums";
 import { getSlideshowImages } from "@/lib/slideshow";
-import { getPerformance } from "@/lib/performance";
 import { Sidebar } from "@/components/sidebar";
 import { IdleScreensaver } from "@/components/idle-screensaver";
-import { LeaderboardSlide } from "@/components/leaderboard-slide";
 import { logout } from "@/app/actions/auth";
 
 export default async function AppLayout({
@@ -18,10 +16,8 @@ export default async function AppLayout({
     href: n.href,
     label: n.label,
   }));
-  const [slideshowImages, perf] = await Promise.all([
-    getSlideshowImages(),
-    getPerformance(),
-  ]);
+  // Cheap: a directory read, no database work on every page load.
+  const slideshowImages = await getSlideshowImages();
 
   return (
     <div className="flex min-h-screen">
@@ -47,16 +43,7 @@ export default async function AppLayout({
         </header>
         <main className="flex-1 p-6">{children}</main>
       </div>
-      <IdleScreensaver
-        images={slideshowImages}
-        extra={
-          <LeaderboardSlide
-            rows={perf.rows}
-            best={perf.best}
-            totals={perf.totals}
-          />
-        }
-      />
+      <IdleScreensaver images={slideshowImages} />
     </div>
   );
 }

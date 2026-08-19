@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Slideshow } from "@/components/slideshow";
+import { LeaderboardSlide } from "@/components/leaderboard-slide";
+import {
+  getLeaderboardSnapshot,
+  type LeaderboardSnapshot,
+} from "@/app/actions/leaderboard";
 
 const ACTIVITY_EVENTS = [
   "mousemove",
@@ -14,35 +19,39 @@ const ACTIVITY_EVENTS = [
 
 /**
  * Sleep mode: after a stretch with no input, the floor screen fades into a
- * full-screen slideshow. Any interaction wakes it. Nothing is rendered until
- * it actually sleeps, so this costs nothing while somebody is working.
+ * full-screen slideshow. Any interaction wakes it.
+ *
+ * The standings are fetched when it falls asleep, not on every page load —
+ * doing that work up front made each render pay for three table scans against
+ * a one-connection pool.
  */
 export function IdleScreensaver({
   images,
-  extra,
   idleMs = 3 * 60 * 1000,
 }: {
   images: string[];
-  extra?: ReactNode;
   idleMs?: number;
 }) {
   const [asleep, setAsleep] = useState(false);
+  const [board, setBoard] = useState<LeaderboardSnapshot | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (images.length === 0 && !extra) return;
+  const sleep = useCallback(() => {
+    setAsleep(true);
+    // Best effort: if the standings can't be loaded the pictures still show.
+    getLeaderboardSnapshot()
+      .then(setBoard)
+      .catch(() => setBoard(null));
+  }, []);
 
-    const sleep = () => setAsleep(true);
+  useEffect(() => {
     const reset = () => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(sleep, idleMs);
     };
 
     const wake = () => {
-      setAsleep((was) => {
-        if (was) return false;
-        return was;
-      });
+      setAsleep(false);
       reset();
     };
 
@@ -55,7 +64,7 @@ export function IdleScreensaver({
       for (const e of ACTIVITY_EVENTS) window.removeEventListener(e, wake);
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [images.length, extra, idleMs]);
+  }, [idleMs, sleep]);
 
   if (!asleep) return null;
 
@@ -67,7 +76,15 @@ export function IdleScreensaver({
     >
       <Slideshow
         images={images}
-        extra={extra}
+        extra={
+          board ? (
+            <LeaderboardSlide
+              rows={board.rows}
+              best={board.best}
+              totals={board.totals}
+            />
+          ) : undefined
+        }
         intervalMs={7000}
         fit="cover"
         showDots={false}

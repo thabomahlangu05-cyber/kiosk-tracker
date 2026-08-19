@@ -28,8 +28,26 @@ export function Slideshow({
 
   useEffect(() => {
     if (count < 2) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % count), intervalMs);
-    return () => clearInterval(id);
+
+    let id: ReturnType<typeof setInterval>;
+    const start = () => {
+      clearInterval(id);
+      id = setInterval(() => setIndex((i) => (i + 1) % count), intervalMs);
+    };
+
+    // Browsers throttle timers and stop compositing in a hidden tab, so a
+    // screen that was in the background comes back mid-cycle. Restarting on
+    // wake gives the returning slide a full turn instead of a snap.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") start();
+    };
+
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [count, intervalMs]);
 
   if (count === 0) return null;
@@ -42,7 +60,7 @@ export function Slideshow({
           src={src}
           alt=""
           className={cn(
-            "absolute inset-0 h-full w-full transition-opacity duration-1000",
+            "absolute inset-0 h-full w-full will-change-[opacity] transition-opacity duration-[1200ms] ease-in-out",
             fit === "cover" ? "object-cover" : "object-contain",
             i === index ? "opacity-100" : "opacity-0",
           )}
@@ -52,7 +70,7 @@ export function Slideshow({
       {extra ? (
         <div
           className={cn(
-            "absolute inset-0 overflow-auto transition-opacity duration-1000",
+            "absolute inset-0 overflow-auto will-change-[opacity] transition-opacity duration-[1200ms] ease-in-out",
             index === images.length
               ? "opacity-100"
               : "pointer-events-none opacity-0",

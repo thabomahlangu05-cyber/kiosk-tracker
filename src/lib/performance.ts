@@ -54,26 +54,28 @@ export async function getPerformance(days = 14): Promise<PerformanceData> {
   since.setDate(since.getDate() - (days - 1));
   since.setHours(0, 0, 0, 0);
 
-  const [users, checklist, housekeeping] = await Promise.all([
-    prisma.user.findMany({
-      where: { active: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.repairChecklistItem.findMany({
-      where: { assignedToId: { not: null } },
-      select: {
-        assignedToId: true,
-        phase: true,
-        completed: true,
-        completedAt: true,
-      },
-    }),
-    prisma.housekeepingTask.findMany({
-      where: { assignedToId: { not: null } },
-      select: { assignedToId: true, status: true, completedAt: true },
-    }),
-  ]);
+  // Sequential on purpose. The serverless pool is capped at one connection
+  // (src/lib/db.ts), so firing these together just makes two of them queue for
+  // a checkout and risk the acquire timeout — with no gain, since they share
+  // the one connection either way.
+  const users = await prisma.user.findMany({
+    where: { active: true },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: "asc" },
+  });
+  const checklist = await prisma.repairChecklistItem.findMany({
+    where: { assignedToId: { not: null } },
+    select: {
+      assignedToId: true,
+      phase: true,
+      completed: true,
+      completedAt: true,
+    },
+  });
+  const housekeeping = await prisma.housekeepingTask.findMany({
+    where: { assignedToId: { not: null } },
+    select: { assignedToId: true, status: true, completedAt: true },
+  });
 
   const acc = new Map<string, ReturnType<typeof blank>>();
   const bump = (id: string | null) => {
