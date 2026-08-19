@@ -1,18 +1,15 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { CHECKLIST_PHASE, ROLE_LABELS } from "@/lib/enums";
+import { ROLE_LABELS } from "@/lib/enums";
+import {
+  getPerformance,
+  DONE_WEIGHT,
+  OPEN_WEIGHT,
+  type PerformanceRow,
+} from "@/lib/performance";
 import { StatCard, Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
-/**
- * Scoring counts the work people take on themselves: a task they claimed and
- * finished is worth more than one still in their hands, but both count. Nobody
- * is scored on kiosks — those aren't claimed any more.
- */
-const DONE_WEIGHT = 2;
-const OPEN_WEIGHT = 1;
 
 const VIEWS = [
   { key: "table", label: "Table" },
@@ -23,18 +20,6 @@ type ViewKey = (typeof VIEWS)[number]["key"];
 
 const DAYS = 14;
 
-interface Row {
-  id: string;
-  name: string;
-  role: string;
-  repairDone: number;
-  qaDone: number;
-  housekeepingDone: number;
-  open: number;
-  done: number;
-  score: number;
-}
-
 function ratingFor(score: number, best: number) {
   if (best === 0 || score === 0)
     return { label: "No activity", tone: "slate" as const };
@@ -43,10 +28,6 @@ function ratingFor(score: number, best: number) {
   if (share >= 0.5) return { label: "Strong", tone: "blue" as const };
   if (share >= 0.25) return { label: "Steady", tone: "amber" as const };
   return { label: "Building up", tone: "slate" as const };
-}
-
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
 }
 
 export default async function TeamPerformancePage({
@@ -59,110 +40,8 @@ export default async function TeamPerformancePage({
   const view: ViewKey = (VIEWS.find((v) => v.key === rawView)?.key ??
     "table") as ViewKey;
 
-  const since = new Date();
-  since.setDate(since.getDate() - (DAYS - 1));
-  since.setHours(0, 0, 0, 0);
-
-  const [users, checklist, housekeeping] = await Promise.all([
-    prisma.user.findMany({
-      where: { active: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" },
-    }),
-    // Every task somebody has taken on — claimed and open, or completed.
-    prisma.repairChecklistItem.findMany({
-      where: { assignedToId: { not: null } },
-      select: {
-        assignedToId: true,
-        phase: true,
-        completed: true,
-        completedAt: true,
-      },
-    }),
-    prisma.housekeepingTask.findMany({
-      where: { assignedToId: { not: null } },
-      select: { assignedToId: true, status: true, completedAt: true },
-    }),
-  ]);
-
-  const blank = () => ({
-    repairDone: 0,
-    qaDone: 0,
-    housekeepingDone: 0,
-    open: 0,
-    done: 0,
-  });
-  const acc = new Map<string, ReturnType<typeof blank>>();
-  const bump = (id: string | null) => {
-    if (!id) return null;
-    if (!acc.has(id)) acc.set(id, blank());
-    return acc.get(id)!;
-  };
-
-  for (const item of checklist) {
-    const a = bump(item.assignedToId);
-    if (!a) continue;
-    if (item.completed) {
-      a.done += 1;
-      if (item.phase === CHECKLIST_PHASE.QA) a.qaDone += 1;
-      else a.repairDone += 1;
-    } else {
-      a.open += 1;
-    }
-  }
-  for (const task of housekeeping) {
-    const a = bump(task.assignedToId);
-    if (!a) continue;
-    if (task.status === "COMPLETED") {
-      a.done += 1;
-      a.housekeepingDone += 1;
-    } else {
-      a.open += 1;
-    }
-  }
-
-  const rows: Row[] = users.map((u) => {
-    const a = acc.get(u.id) ?? blank();
-    return {
-      id: u.id,
-      name: u.name,
-      role: u.role,
-      ...a,
-      score: a.done * DONE_WEIGHT + a.open * OPEN_WEIGHT,
-    };
-  });
-  rows.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-
-  const best = rows.length > 0 ? rows[0].score : 0;
-  const totals = rows.reduce(
-    (t, r) => ({
-      done: t.done + r.done,
-      open: t.open + r.open,
-      repairDone: t.repairDone + r.repairDone,
-      qaDone: t.qaDone + r.qaDone,
-    }),
-    { done: 0, open: 0, repairDone: 0, qaDone: 0 },
-  );
-  const active = rows.filter((r) => r.score > 0).length;
-
-  // --- Trend: completions per day over the last two weeks -------------------
-  const buckets = new Map<string, number>();
-  for (let i = 0; i < DAYS; i++) {
-    const d = new Date(since);
-    d.setDate(d.getDate() + i);
-    buckets.set(dayKey(d), 0);
-  }
-  const countDay = (at: Date | null) => {
-    if (!at || at < since) return;
-    const k = dayKey(at);
-    if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + 1);
-  };
-  for (const i of checklist) if (i.completed) countDay(i.completedAt);
-  for (const t of housekeeping)
-    if (t.status === "COMPLETED") countDay(t.completedAt);
-
-  const series = [...buckets.entries()];
-  const peak = Math.max(1, ...series.map(([, n]) => n));
+  const { rows, best, totals, active, series, peak } =
+    await getPerformance(DAYS);
 
   const charted = rows.filter((r) => r.score > 0).slice(0, 12);
 

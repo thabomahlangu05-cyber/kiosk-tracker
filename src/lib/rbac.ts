@@ -97,5 +97,6 @@ export const NAV: NavItem[] = [
   { href: "/stock", label: "Stock", action: "dashboard:view" },
   { href: "/communications", label: "Communications", action: "dashboard:view" },
   { href: "/ideas", label: "Ideas", action: "dashboard:view" },
+  { href: "/slideshow", label: "Slideshow", action: "dashboard:view" },
   { href: "/admin", label: "Admin", action: "admin:manage" },
 ];
