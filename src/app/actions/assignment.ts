@@ -94,7 +94,9 @@ export async function getAvailableJobs() {
     where: {
       assignedTechId: null,
       status: "IN_PROGRESS",
-      currentStage: { notIn: TERMINAL_STAGES },
+      // REPAIR is excluded: that stage uses per-task self-assignment (see
+      // src/app/actions/checklist.ts) instead of whole-job claim/release.
+      currentStage: { notIn: [...TERMINAL_STAGES, "REPAIR"] },
     },
     include: {
       kiosk: { include: { model: true } },

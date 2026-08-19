@@ -7,6 +7,7 @@ import {
   BUILD_STAGES,
   REPAIR_STAGES,
 } from "../src/lib/enums";
+import { REPAIR_CHECKLIST_TEMPLATE } from "../src/lib/repairChecklist";
 
 // Seed runs standalone via `tsx`; load .env for DATABASE_URL.
 try {
@@ -219,8 +220,36 @@ async function main() {
     });
   }
 
+  // --- Backfill repair checklists -----------------------------------------
+  // REPAIR jobs created before the per-task checklist existed have none; give
+  // them the standard template so technicians can self-assign tasks. New jobs
+  // get theirs at intake (createUnit in src/app/actions/jobs.ts).
+  // Only units still at or before the Repair stage: retrofitting an all-unchecked
+  // checklist onto something already dispatched would just be noise.
+  const repairJobs = await prisma.job.findMany({
+    where: {
+      kind: KINDS.REPAIR,
+      currentStage: { in: ["RECEIVING", "REPAIR"] },
+    },
+    select: { id: true, _count: { select: { repairChecklist: true } } },
+  });
+  let backfilled = 0;
+  for (const job of repairJobs) {
+    if (job._count.repairChecklist > 0) continue;
+    await prisma.repairChecklistItem.createMany({
+      data: REPAIR_CHECKLIST_TEMPLATE.map((t, i) => ({
+        jobId: job.id,
+        section: t.section,
+        subsection: t.subsection,
+        title: t.title,
+        sequence: i,
+      })),
+    });
+    backfilled++;
+  }
+
   console.log(
-    `Seed complete. ${await prisma.user.count()} users, ${await prisma.team.count()} teams, ${await prisma.part.count()} parts. Default password: ${DEFAULT_PASSWORD}`,
+    `Seed complete. ${await prisma.user.count()} users, ${await prisma.team.count()} teams, ${await prisma.part.count()} parts, ${backfilled} repair checklist(s) backfilled. Default password: ${DEFAULT_PASSWORD}`,
   );
 }
 

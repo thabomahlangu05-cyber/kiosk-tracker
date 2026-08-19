@@ -34,6 +34,7 @@ model User {
   auditLogs               AuditLog[]
   housekeepingAssigned    HousekeepingTask[] @relation("HousekeepingAssigned")
   housekeepingCreated     HousekeepingTask[] @relation("HousekeepingCreated")
+  repairTasksAssigned     RepairChecklistItem[] @relation("RepairTaskAssigned")
 }
 
 model Team {
@@ -86,6 +87,26 @@ model Job {
   transitions    StageTransition[]
   inspections    QAInspection[]
   stockMovements StockMovement[]
+  repairChecklist RepairChecklistItem[]
+}
+
+// Per-task checklist for the Repair stage. Unlike Job.assignedTechId (whole
+// unit locked to one tech), each item here has its own optional assignee so
+// multiple technicians can work a unit's repair concurrently.
+model RepairChecklistItem {
+  id           String    @id @default(cuid())
+  jobId        String
+  section      String // "Top Console" | "Mid Console" | "Bottom Console" | "Troubleshooting" | "Branding"
+  subsection   String? // "Wiring" | "Boards" | "Battery Box"; null when the section has no subsection
+  title        String
+  sequence     Int // stable ordering within the job
+  completed    Boolean   @default(false)
+  completedAt  DateTime?
+  assignedToId String?
+  createdAt    DateTime  @default(now())
+
+  job        Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  assignedTo User? @relation("RepairTaskAssigned", fields: [assignedToId], references: [id])
 }
 
 // Configurable ordered stages per kind (BUILD vs REPAIR)

@@ -5,8 +5,21 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/rbac";
 import { JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
 import { isQaStage, nextStage } from "@/lib/workflow";
+import {
+  groupChecklist,
+  type ChecklistItemLike,
+  type GroupedSection,
+} from "@/lib/repairChecklist";
+import type { SessionUser } from "@/lib/session";
 import { advanceStage } from "@/app/actions/jobs";
 import { claimJob, releaseJob } from "@/app/actions/assignment";
+import {
+  claimTaskAction,
+  releaseTaskAction,
+  toggleTaskAction,
+  addTaskAction,
+  deleteTaskAction,
+} from "@/app/actions/checklist";
 import { IssuePartForm } from "@/components/issue-part-form";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { KindBadge, StatusBadge, Badge } from "@/components/ui/badge";
@@ -42,6 +55,10 @@ export default async function UnitDetailPage({
         orderBy: { createdAt: "asc" },
         include: { part: true },
       },
+      repairChecklist: {
+        orderBy: { sequence: "asc" },
+        include: { assignedTo: true },
+      },
     },
   });
 
@@ -50,6 +67,20 @@ export default async function UnitDetailPage({
   const next = nextStage(job.kind, job.currentStage);
   const completed = job.status === JOB_STATUS.COMPLETED;
   const atQa = isQaStage(job.kind, job.currentStage);
+  const atRepair = job.currentStage === "REPAIR";
+  const hasChecklist = job.repairChecklist.length > 0;
+  const repairComplete =
+    !hasChecklist || job.repairChecklist.every((i) => i.completed);
+  const doneCount = job.repairChecklist.filter((i) => i.completed).length;
+  const canAddTask =
+    user.role === ROLES.REPAIR_TECHNICIAN ||
+    user.role === ROLES.TEAM_LEADER ||
+    user.role === ROLES.PRODUCTION_MANAGER;
+  const canDeleteTask =
+    user.role === ROLES.TEAM_LEADER || user.role === ROLES.PRODUCTION_MANAGER;
+  const sections = hasChecklist
+    ? groupChecklist(job.repairChecklist as unknown as ChecklistItemLike[])
+    : [];
 
   const canIssue = can(user.role, "inventory:move") && !completed;
   const availableParts = canIssue
@@ -65,23 +96,32 @@ export default async function UnitDetailPage({
 
   const isTechnician =
     user.role === ROLES.REPAIR_TECHNICIAN || user.role === ROLES.QA_TECHNICIAN;
+  // Mirrors canModifyJob() in src/app/actions/jobs.ts — keep the two in step.
   const canModify =
     user.role === ROLES.PRODUCTION_MANAGER ||
     (user.role === ROLES.TEAM_LEADER &&
       !!user.teamId &&
       job.assignedTeamId === user.teamId) ||
+    // Repair is shared work, so any repair tech may advance it off that stage.
+    (user.role === ROLES.REPAIR_TECHNICIAN && atRepair) ||
     (isTechnician && job.assignedTechId === user.id);
 
-  // Technicians claim unclaimed work at any stage, and can hand it back.
-  const showClaim = isTechnician && !completed && !job.assignedTechId;
+  // Technicians claim unclaimed work at any stage, and can hand it back —
+  // except Repair, which uses per-task self-assignment instead (below).
+  const showClaim =
+    isTechnician && !completed && !job.assignedTechId && !(atRepair && hasChecklist);
   const showRelease =
-    isTechnician && !completed && job.assignedTechId === user.id;
+    isTechnician &&
+    !completed &&
+    job.assignedTechId === user.id &&
+    !(atRepair && hasChecklist);
   const showAdvance =
     can(user.role, "job:advanceStage") &&
     canModify &&
     !completed &&
     !!next &&
-    !atQa;
+    !atQa &&
+    (!atRepair || repairComplete);
   const showInspect = can(user.role, "qa:inspect") && !completed && atQa;
 
   return (
@@ -127,6 +167,12 @@ export default async function UnitDetailPage({
               </Button>
             </form>
           ) : null}
+          {atRepair && hasChecklist && !repairComplete && !completed ? (
+            <span className="text-sm text-slate-500">
+              {doneCount}/{job.repairChecklist.length} checklist tasks
+              complete — finish them all to advance
+            </span>
+          ) : null}
           {showInspect ? (
             <Link
               href={`/qa/${encodeURIComponent(job.kiosk.serialNumber)}`}
@@ -140,6 +186,68 @@ export default async function UnitDetailPage({
           ) : null}
         </div>
       </div>
+
+      {hasChecklist ? (
+        <Card>
+          <CardHeader
+            title="Repair Workflow"
+            action={
+              <span className="text-xs text-gray-400">
+                {doneCount}/{job.repairChecklist.length}
+              </span>
+            }
+          />
+          <CardBody className="space-y-4">
+            {sections.map((section) => (
+              <details
+                key={section.name}
+                open
+                className="rounded-md border border-[var(--border)]"
+              >
+                <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-semibold text-white">
+                  {section.name}
+                  <span className="text-xs font-normal text-gray-400">
+                    {countDone(section)}/{countTotal(section)}
+                  </span>
+                </summary>
+                <div className="space-y-3 border-t border-[var(--border)] p-3">
+                  {section.directItems.length > 0 ? (
+                    <TaskList
+                      jobId={job.id}
+                      section={section.name}
+                      subsection={null}
+                      items={section.directItems}
+                      user={user}
+                      canAddTask={canAddTask}
+                      canDeleteTask={canDeleteTask}
+                    />
+                  ) : null}
+                  {section.subsections.map((sub) => (
+                    <div key={sub.name}>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        {sub.name}
+                        <span className="ml-2 font-normal normal-case text-gray-600">
+                          {sub.items.filter((i) => i.completed).length}/
+                          {sub.items.length}
+                        </span>
+                      </p>
+                      <TaskList
+                        jobId={job.id}
+                        section={section.name}
+                        subsection={sub.name}
+                        items={sub.items}
+                        user={user}
+                        canAddTask={canAddTask}
+                        canDeleteTask={canDeleteTask}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </CardBody>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">
@@ -296,6 +404,180 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex items-center justify-between gap-4">
       <span className="text-slate-500">{label}</span>
       <span className="text-right text-slate-800">{value}</span>
+    </div>
+  );
+}
+
+function countTotal(section: GroupedSection): number {
+  return (
+    section.directItems.length +
+    section.subsections.reduce((sum, s) => sum + s.items.length, 0)
+  );
+}
+
+function countDone(section: GroupedSection): number {
+  const direct = section.directItems.filter((i) => i.completed).length;
+  const nested = section.subsections.reduce(
+    (sum, s) => sum + s.items.filter((i) => i.completed).length,
+    0,
+  );
+  return direct + nested;
+}
+
+/** One section/subsection's task rows, plus the "add task" input beneath them. */
+function TaskList({
+  jobId,
+  section,
+  subsection,
+  items,
+  user,
+  canAddTask,
+  canDeleteTask,
+}: {
+  jobId: string;
+  section: string;
+  subsection: string | null;
+  items: ChecklistItemLike[];
+  user: SessionUser;
+  canAddTask: boolean;
+  canDeleteTask: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      {items.map((item) => (
+        <TaskRow
+          key={item.id}
+          item={item}
+          user={user}
+          canDeleteTask={canDeleteTask}
+        />
+      ))}
+      {canAddTask ? (
+        <form action={addTaskAction} className="flex items-center gap-2 pt-1">
+          <input type="hidden" name="jobId" value={jobId} />
+          <input type="hidden" name="section" value={section} />
+          {subsection ? (
+            <input type="hidden" name="subsection" value={subsection} />
+          ) : null}
+          <input
+            type="text"
+            name="title"
+            placeholder={subsection ? "Add task…" : "Add check…"}
+            className="flex-1 rounded-md border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+          />
+          <button
+            type="submit"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] text-gray-300 hover:bg-[var(--border)]"
+            aria-label="Add task"
+          >
+            +
+          </button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskRow({
+  item,
+  user,
+  canDeleteTask,
+}: {
+  item: ChecklistItemLike;
+  user: SessionUser;
+  canDeleteTask: boolean;
+}) {
+  const isMine = item.assignedToId === user.id;
+  const isManager =
+    user.role === ROLES.PRODUCTION_MANAGER || user.role === ROLES.TEAM_LEADER;
+  const canToggle = isMine || isManager;
+  const canClaim = user.role === ROLES.REPAIR_TECHNICIAN;
+
+  return (
+    <div className="flex items-center gap-2 py-1.5 text-sm">
+      {canToggle ? (
+        <form action={toggleTaskAction}>
+          <input type="hidden" name="itemId" value={item.id} />
+          <button
+            type="submit"
+            aria-label={item.completed ? "Mark incomplete" : "Mark complete"}
+            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+              item.completed
+                ? "border-[var(--primary)] bg-[var(--primary)] text-slate-900"
+                : "border-gray-500"
+            }`}
+          >
+            {item.completed ? "✓" : ""}
+          </button>
+        </form>
+      ) : (
+        <span
+          title={
+            item.assignedToId
+              ? "Assigned to someone else"
+              : "Assign yourself first"
+          }
+          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+            item.completed
+              ? "border-[var(--primary)] bg-[var(--primary)] text-slate-900"
+              : "border-gray-600"
+          }`}
+        >
+          {item.completed ? "✓" : ""}
+        </span>
+      )}
+
+      <span
+        className={`flex-1 ${item.completed ? "text-gray-500 line-through" : "text-gray-200"}`}
+      >
+        {item.title}
+      </span>
+
+      {item.assignedToId && !isMine ? (
+        <span
+          title={item.assignedTo?.name ?? "Assigned"}
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--border)] text-[10px] font-semibold text-gray-300"
+        >
+          {(item.assignedTo?.name ?? "?").charAt(0).toUpperCase()}
+        </span>
+      ) : isMine ? (
+        <form action={releaseTaskAction}>
+          <input type="hidden" name="itemId" value={item.id} />
+          <button
+            type="submit"
+            title="Release this task"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--primary)] text-[10px] font-semibold text-slate-900"
+          >
+            {user.name.charAt(0).toUpperCase()}
+          </button>
+        </form>
+      ) : canClaim ? (
+        <form action={claimTaskAction}>
+          <input type="hidden" name="itemId" value={item.id} />
+          <button
+            type="submit"
+            title="Assign yourself"
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-600 text-gray-400 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+          >
+            +
+          </button>
+        </form>
+      ) : (
+        <span className="h-6 w-6" />
+      )}
+
+      {canDeleteTask ? (
+        <form action={deleteTaskAction}>
+          <input type="hidden" name="itemId" value={item.id} />
+          <button
+            type="submit"
+            title="Delete task"
+            className="text-gray-600 hover:text-red-400"
+          >
+            ×
+          </button>
+        </form>
+      ) : null}
     </div>
   );
 }

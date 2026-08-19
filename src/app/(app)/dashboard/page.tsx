@@ -2,148 +2,187 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/rbac";
-import { JOB_STATUS, ROLES, stageLabel } from "@/lib/enums";
-import { firstPassYield } from "@/lib/metrics";
-import { StatCard, Card, CardHeader, CardBody } from "@/components/ui/card";
-import { KindBadge, StatusBadge } from "@/components/ui/badge";
+import { JOB_STATUS, stageLabel } from "@/lib/enums";
+import { TERMINAL_STAGES } from "@/lib/claims";
+import { StatCard, Card, CardBody } from "@/components/ui/card";
+import { KindBadge, Badge } from "@/components/ui/badge";
+import { cn, formatDateTime } from "@/lib/utils";
 
-export default async function DashboardPage() {
+const TABS = [
+  { key: "all", label: "All" },
+  { key: "RECEIVING", label: "Receiving" },
+  { key: "REPAIR", label: "Repair" },
+  { key: "QA", label: "QA" },
+  { key: "BOXING", label: "Boxing" },
+  { key: "DISPATCH", label: "Dispatched" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
+function whereForTab(tab: TabKey) {
+  if (tab === "all") return {};
+  if (tab === "DISPATCH") return { currentStage: "DISPATCH" };
+  return { currentStage: tab, status: JOB_STATUS.IN_PROGRESS };
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ stage?: string }>;
+}) {
   const user = await requireUser();
+  const { stage: rawStage } = await searchParams;
+  const activeTab: TabKey = (TABS.find((t) => t.key === rawStage)?.key ??
+    "all") as TabKey;
 
-  const [active, inQa, completed, parts, wip, recent, myQueue, fpy] =
-    await Promise.all([
-      prisma.job.count({ where: { status: JOB_STATUS.IN_PROGRESS } }),
-      prisma.job.count({
-        where: { status: JOB_STATUS.IN_PROGRESS, currentStage: "QA" },
-      }),
-      prisma.job.count({ where: { status: JOB_STATUS.COMPLETED } }),
-      prisma.part.findMany({
-        select: { name: true, quantityOnHand: true, reorderLevel: true },
-      }),
-      prisma.job.groupBy({
-        by: ["currentStage", "kind"],
-        where: { status: JOB_STATUS.IN_PROGRESS },
-        _count: { _all: true },
-      }),
-      prisma.job.findMany({
-        take: 6,
-        orderBy: { createdAt: "desc" },
-        include: { kiosk: { include: { model: true } }, assignedTech: true },
-      }),
-      user.role === ROLES.REPAIR_TECHNICIAN
-        ? prisma.job.count({
-            where: {
-              assignedTechId: user.id,
-              status: JOB_STATUS.IN_PROGRESS,
-            },
-          })
-        : Promise.resolve(0),
-      firstPassYield(),
-    ]);
-
-  const lowStock = parts.filter((p: any) => p.quantityOnHand <= p.reorderLevel);
+  const [
+    totalKiosks,
+    inRepair,
+    inBoxing,
+    dispatched,
+    unassigned,
+    tabCounts,
+    units,
+  ] = await Promise.all([
+    prisma.job.count(),
+    prisma.job.count({
+      where: { currentStage: "REPAIR", status: JOB_STATUS.IN_PROGRESS },
+    }),
+    prisma.job.count({
+      where: { currentStage: "BOXING", status: JOB_STATUS.IN_PROGRESS },
+    }),
+    prisma.job.count({ where: { currentStage: "DISPATCH" } }),
+    prisma.job.count({
+      where: {
+        assignedTechId: null,
+        status: JOB_STATUS.IN_PROGRESS,
+        currentStage: { notIn: TERMINAL_STAGES },
+      },
+    }),
+    Promise.all(
+      TABS.map((t) =>
+        t.key === "all"
+          ? prisma.job.count()
+          : prisma.job.count({ where: whereForTab(t.key) }),
+      ),
+    ),
+    prisma.job.findMany({
+      where: whereForTab(activeTab),
+      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+      include: {
+        kiosk: { include: { model: true } },
+        assignedTech: true,
+        assignedTeam: true,
+      },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-white">
-          Welcome, {user.name.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-gray-400">Production overview</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-white">
+            Production Pipeline
+          </h1>
+          <p className="text-sm text-gray-400">
+            Track every kiosk through the workflow
+          </p>
+        </div>
+        {can(user.role, "intake:create") ? (
+          <Link
+            href="/intake"
+            className="inline-flex items-center gap-2 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-slate-900 hover:bg-[var(--primary-dark)]"
+          >
+            + Log Kiosk
+          </Link>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Active units" value={active} />
-        <StatCard label="In QA" value={inQa} />
-        <StatCard
-          label="First-pass yield"
-          value={fpy.yieldPct === null ? "—" : `${fpy.yieldPct}%`}
-        />
-        <StatCard label="Completed" value={completed} />
-        {user.role === ROLES.REPAIR_TECHNICIAN ? (
-          <StatCard label="My queue" value={myQueue} hint="assigned to you" />
-        ) : (
-          <StatCard
-            label="Low stock parts"
-            value={lowStock.length}
-            hint={can(user.role, "inventory:view") ? "at/below reorder" : undefined}
-          />
-        )}
+        <StatCard label="Total Kiosks" value={totalKiosks} />
+        <StatCard label="In Repair" value={inRepair} />
+        <StatCard label="In Boxing" value={inBoxing} />
+        <StatCard label="Dispatched" value={dispatched} />
+        <StatCard label="Unassigned" value={unassigned} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Work in progress by stage" />
-          <CardBody>
-            {wip.length === 0 ? (
-              <p className="text-sm text-gray-500">No active units.</p>
-            ) : (
-              <ul className="space-y-2">
-                {wip.map((w: any) => (
-                  <li
-                    key={`${w.kind}-${w.currentStage}`}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="flex items-center gap-2">
-                      <KindBadge kind={w.kind} />
-                      <span className="text-gray-300">
-                        {stageLabel(w.kind, w.currentStage)}
-                      </span>
-                    </span>
-                    <span className="font-medium text-white">
-                      {w._count._all}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+      <div className="flex flex-wrap gap-2 rounded-lg bg-[var(--surface)] p-1">
+        {TABS.map((tab, i) => (
+          <Link
+            key={tab.key}
+            href={tab.key === "all" ? "/dashboard" : `/dashboard?stage=${tab.key}`}
+            className={cn(
+              "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+              activeTab === tab.key
+                ? "bg-[var(--primary)] text-slate-900"
+                : "text-gray-300 hover:bg-[var(--border)]",
             )}
-          </CardBody>
-        </Card>
+          >
+            {tab.label} ({tabCounts[i]})
+          </Link>
+        ))}
+      </div>
 
-        <Card>
-          <CardHeader
-            title="Recent units"
-            action={
-              <Link
-                href="/units"
-                className="text-xs font-medium text-[var(--primary)] hover:underline"
-              >
-                View all
-              </Link>
-            }
-          />
-          <CardBody className="p-0">
-            <ul className="divide-y divide-[var(--border)]">
-              {recent.map((job) => (
-                <li key={job.id}>
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3 font-medium">Kiosk ID / Model</th>
+              <th className="px-4 py-3 font-medium">Stage</th>
+              <th className="px-4 py-3 font-medium">Priority</th>
+              <th className="px-4 py-3 font-medium">Assignee</th>
+              <th className="px-4 py-3 font-medium">Received</th>
+              <th className="px-4 py-3 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--border)]">
+            {units.map((job) => (
+              <tr key={job.id} className="hover:bg-[var(--border)]/40">
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-white">
+                    {job.kiosk.serialNumber}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <KindBadge kind={job.kind} />
+                    {job.kiosk.model.name}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge tone="green">
+                    {stageLabel(job.kind, job.currentStage)}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge tone="amber">{job.priority.toLowerCase()}</Badge>
+                </td>
+                <td className="px-4 py-3 text-gray-400">
+                  {job.assignedTech?.name ??
+                    job.assignedTeam?.name ??
+                    "Unassigned"}
+                </td>
+                <td className="px-4 py-3 text-gray-500">
+                  {formatDateTime(job.createdAt)}
+                </td>
+                <td className="px-4 py-3 text-right">
                   <Link
                     href={`/units/${encodeURIComponent(job.kiosk.serialNumber)}`}
-                    className="flex items-center justify-between px-4 py-3 text-sm hover:bg-[var(--border)]"
+                    className="text-sm font-medium text-[var(--primary)] hover:underline"
                   >
-                    <span>
-                      <span className="font-medium text-white">
-                        {job.kiosk.serialNumber}
-                      </span>
-                      <span className="ml-2 text-gray-500">
-                        {job.kiosk.model.name}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <KindBadge kind={job.kind} />
-                      <StatusBadge status={job.status} />
-                    </span>
+                    Open →
                   </Link>
-                </li>
-              ))}
-              {recent.length === 0 ? (
-                <li className="px-4 py-6 text-center text-sm text-slate-400">
-                  No units yet — start with Intake.
-                </li>
-              ) : null}
-            </ul>
-          </CardBody>
-        </Card>
-      </div>
+                </td>
+              </tr>
+            ))}
+            {units.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  No kiosks in this stage.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }

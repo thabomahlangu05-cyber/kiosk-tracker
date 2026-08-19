@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/auth";
 import { KINDS, PRIORITIES, ROLES } from "@/lib/enums";
 import { firstStage, isQaStage, nextStage } from "@/lib/workflow";
+import { REPAIR_CHECKLIST_TEMPLATE } from "@/lib/repairChecklist";
 import type { SessionUser } from "@/lib/session";
 
 export interface IntakeState {
@@ -15,12 +16,21 @@ export interface IntakeState {
 /** Whether a user may modify (advance/assign) a given job. */
 function canModifyJob(
   user: SessionUser,
-  job: { assignedTeamId: string | null; assignedTechId: string | null },
+  job: {
+    assignedTeamId: string | null;
+    assignedTechId: string | null;
+    currentStage: string;
+  },
 ): boolean {
   if (user.role === ROLES.PRODUCTION_MANAGER) return true;
   if (user.role === ROLES.TEAM_LEADER)
     return !!user.teamId && job.assignedTeamId === user.teamId;
-  // Technicians act on work they've claimed, whatever stage it's at.
+  // Repair is a shared effort now (per-task self-assignment), so any repair
+  // technician may advance it once the checklist is done — not just whoever
+  // claimed the whole job.
+  if (user.role === ROLES.REPAIR_TECHNICIAN && job.currentStage === "REPAIR")
+    return true;
+  // Otherwise technicians act on work they've claimed, whatever stage it's at.
   if (
     user.role === ROLES.REPAIR_TECHNICIAN ||
     user.role === ROLES.QA_TECHNICIAN
@@ -69,6 +79,20 @@ export async function createUnit(
           buildOrderRef: kind === KINDS.BUILD ? buildOrderRef : null,
           faultReport: kind === KINDS.REPAIR ? faultReport : null,
           transitions: { create: { stage, userId: user.id } },
+          // Repair jobs get the standard per-task checklist up front; any
+          // repair technician can self-assign to individual tasks once the
+          // unit reaches the Repair stage.
+          repairChecklist:
+            kind === KINDS.REPAIR
+              ? {
+                  create: REPAIR_CHECKLIST_TEMPLATE.map((t, i) => ({
+                    section: t.section,
+                    subsection: t.subsection,
+                    title: t.title,
+                    sequence: i,
+                  })),
+                }
+              : undefined,
         },
       },
     },
@@ -103,6 +127,20 @@ export async function advanceStage(formData: FormData): Promise<void> {
 
   // QA stages are only moved via a QA inspection (pass/fail), never a plain advance.
   if (isQaStage(job.kind, job.currentStage)) redirect("/qa");
+
+  // Repair can't be left until every checklist task is checked off. An empty
+  // checklist (all items deleted) is vacuously complete — always an escape
+  // hatch for a manager.
+  if (job.currentStage === "REPAIR") {
+    const incomplete = await prisma.repairChecklistItem.count({
+      where: { jobId: job.id, completed: false },
+    });
+    if (incomplete > 0) {
+      throw new Error(
+        `Complete the repair checklist before advancing (${incomplete} task(s) remaining).`,
+      );
+    }
+  }
 
   const next = nextStage(job.kind, job.currentStage);
   if (!next) return; // already at the final stage
